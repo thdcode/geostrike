@@ -1,7 +1,7 @@
 // main.js — orquesta la carga inicial y el bucle de juego.
 // Lee esto de arriba a abajo como el mapa mental de todo el cliente.
 
-import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM } from './config.js';
+import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM, SPLASH_RADIUS_KM } from './config.js';
 import { obtenerUbicacion, seleccionarUbicacionManual } from './geolocation.js';
 import { cifrarUbicacion, cachearUbicacionLocal, leerUbicacionCacheada } from './crypto.js';
 import { obtenerIdentidadDispositivo, guardarNickname, leerPlayerIdLegacy, estadoJugador } from './player.js';
@@ -24,6 +24,8 @@ let modoApuntando = false;
 let destinoElegido = null;
 let nombreEquipoActual = null;
 let jugadorEliminado = false;
+let hpAnterior = 100;
+const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
 
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
@@ -156,6 +158,24 @@ async function manejarEliminacion() {
 
 function onCambioJugadorPropio(data) {
   if (!data) return;
+  const hpNuevo = Number.isFinite(data.hp) ? data.hp : hpAnterior;
+  const dañoRecibido = hpAnterior - hpNuevo;
+  if (dañoRecibido > 0) {
+    // Intenta atribuir el daño al disparo ajeno más reciente resuelto en mi radio.
+    const ahora = Date.now();
+    let ultimo = null;
+    for (const [, v] of impactosCercanos) {
+      if (ahora - v.ts < 20_000 && (!ultimo || v.ts > ultimo.ts)) ultimo = v;
+    }
+    if (ultimo) impactosCercanos.clear();
+    UI.anadirActividad(
+      ultimo && ultimo.nickname
+        ? `💥 Impacto recibido de ${ultimo.nickname} · −${dañoRecibido} vida`
+        : `💥 Has recibido ${dañoRecibido} de daño`,
+      'damage'
+    );
+  }
+  hpAnterior = hpNuevo;
   Object.assign(estadoJugador, data);
   if (data.status === 'down') {
     manejarEliminacion();
@@ -207,6 +227,12 @@ function renderPanelEquipo(team) {
 function onCambioDisparos(shots) {
   ultimoSnapshotDisparos = shots;
 
+  // Limpia referencias antiguas de impactos recibidos (ventana de atribución >20s).
+  const ahora = Date.now();
+  for (const [id, v] of impactosCercanos) {
+    if (ahora - v.ts > 20_000) impactosCercanos.delete(id);
+  }
+
   // Limpia disparos que ya no existen en Firebase (evita capas huérfanas).
   const idsVistos = new Set(Object.keys(shots));
   for (const shotId of Mapa.listaDisparos()) {
@@ -218,6 +244,13 @@ function onCambioDisparos(shots) {
     const amenaza = !shot.resolved && miUbicacion &&
       haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= WARNING_RADIUS_KM;
     Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
+
+    // Disparo ajeno resuelto dentro de mi radio de salpicadura: se recuerda
+    // para atribuir el daño que detectemos en onCambioJugadorPropio.
+    if (shot.resolved && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
+        haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= SPLASH_RADIUS_KM) {
+      impactosCercanos.set(shotId, { nickname: shot.shooterNickname, ts: Date.now() });
+    }
 
     if (shot.resolved && shot.result && shot.shooterId === estadoJugador.playerId) {
       if (!shotsYaResueltosMostrados.has(shotId)) {
@@ -322,6 +355,7 @@ async function confirmarDisparo() {
   Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
   cancelarApuntado();
+  UI.anadirActividad(`🚀 Disparo lanzado · destino a ${Math.round(distanciaKm).toLocaleString('es-ES')} km · impacto en ${formatMMSS(flightMs)}`, 'shot');
   UI.mostrarToast(`Disparo lanzado — impacto en ${formatMMSS(flightMs)}.`, 'success');
 }
 
@@ -368,6 +402,11 @@ function wireUI() {
   document.getElementById('btn-cancel-shot')?.addEventListener('click', cancelarApuntado);
 
   document.getElementById('btn-open-ranking')?.addEventListener('click', () => UI.alternarModal('ranking-modal', true));
+  document.getElementById('btn-toggle-activity')?.addEventListener('click', () => {
+    const panel = document.getElementById('activity-panel');
+    UI.alternarActividad(panel?.classList.contains('hidden'));
+  });
+  document.getElementById('btn-clear-activity')?.addEventListener('click', UI.limpiarActividad);
   document.querySelectorAll('[data-close-modal]').forEach((btn) =>
     btn.addEventListener('click', (e) => UI.alternarModal(e.target.dataset.closeModal, false))
   );

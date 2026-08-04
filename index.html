@@ -34,6 +34,7 @@
   </div>
   <div class="hud-block hud-actions">
     <button id="btn-enable-push" class="btn-ghost" title="Activar notificaciones">🔔</button>
+    <button id="btn-toggle-activity" class="btn-ghost" title="Ver actividad">📋</button>
     <button id="btn-open-ranking" class="btn-ghost" title="Ver ranking">🏆</button>
     <button id="btn-end-game" class="btn-ghost" title="Finalizar partida">⏹</button>
   </div>
@@ -46,6 +47,15 @@
 
 <!-- ================= Avisos de disparo entrante ================= -->
 <div id="threat-banner-container" class="threat-banner-container"></div>
+
+<!-- ================= Panel de actividad ================= -->
+<div id="activity-panel" class="activity-panel">
+  <div class="activity-header">
+    <span class="hud-label">ACTIVIDAD</span>
+    <button id="btn-clear-activity" class="activity-clear" title="Limpiar">✕</button>
+  </div>
+  <div id="activity-list" class="activity-list"></div>
+</div>
 
 <!-- ================= Preview de disparo (antes de confirmar) ================= -->
 <div id="shot-preview" class="shot-preview hidden">

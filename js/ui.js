@@ -47,10 +47,37 @@ export function mostrarToast(mensaje, tipo = 'info') {
 export function mostrarResultadoImpacto({ hits, totalPoints }) {
   if (!hits || hits.length === 0) {
     mostrarToast('Sin impactos — nadie estaba en el radio de 50 km.', 'info');
+    anadirActividad('🎯 Disparo resuelto sin impacto.', 'info');
     return;
   }
   const detalle = hits.map((h) => `${h.nickname} (+${h.points})`).join(', ');
   mostrarToast(`¡Impacto! ${detalle} · Total: +${totalPoints} puntos`, 'success');
+  anadirActividad(`🎯 ¡Impacto! ${detalle} · Total +${totalPoints}.`, 'hit');
+}
+
+// ---------- Panel de actividad ----------
+
+const TIPO_CLASE = { shot: 'tactivo-shot', hit: 'tactivo-hit', damage: 'tactivo-damage', info: 'tactivo-info' };
+
+/** Añade una entrada al panel de actividad (la más reciente arriba). */
+export function anadirActividad(texto, tipo = 'info') {
+  const list = document.getElementById('activity-list');
+  if (!list) return;
+  const el = document.createElement('div');
+  el.className = `activity-entry ${TIPO_CLASE[tipo] || 'tactivo-info'}`;
+  el.textContent = texto;
+  list.prepend(el);
+  while (list.children.length > 50) list.lastElementChild.remove();
+}
+
+export function limpiarActividad() {
+  const list = document.getElementById('activity-list');
+  if (list) list.innerHTML = '';
+}
+
+export function alternarActividad(mostrar) {
+  const panel = document.getElementById('activity-panel');
+  if (panel) panel.classList.toggle('hidden', !mostrar);
 }
 
 export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida) {
