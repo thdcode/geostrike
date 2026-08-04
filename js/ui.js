@@ -97,6 +97,7 @@ export function alternarModal(modalId, mostrar) {
 
 let _resolverRecuperacion = null;
 let _resolverFinalizar = null;
+let _resolverEliminado = null;
 let _modalesDecisiónWireados = false;
 
 function wirearModalesDecision() {
@@ -108,6 +109,8 @@ function wirearModalesDecision() {
 
   document.getElementById('btn-finalize-confirm')?.addEventListener('click', () => responderFinalizar(true));
   document.getElementById('btn-finalize-cancel')?.addEventListener('click', () => responderFinalizar(false));
+
+  document.getElementById('btn-eliminated-confirm')?.addEventListener('click', () => responderEliminado());
 }
 
 function responderRecuperacion(decision) {
@@ -128,6 +131,15 @@ function responderFinalizar(ok) {
   }
 }
 
+function responderEliminado() {
+  alternarModal('eliminated-modal', false);
+  if (_resolverEliminado) {
+    const r = _resolverEliminado;
+    _resolverEliminado = null;
+    r();
+  }
+}
+
 /** Pregunta al jugador si quiere recuperar su partida activa. Resuelve 'recuperar' | 'nueva'. */
 export function preguntarRecuperacion(nickname) {
   wirearModalesDecision();
@@ -142,6 +154,13 @@ export function confirmarFinalizar() {
   wirearModalesDecision();
   alternarModal('finalize-modal', true);
   return new Promise((resolve) => { _resolverFinalizar = resolve; });
+}
+
+/** Avisa de que el jugador ha sido eliminado. Resuelve al pulsar "Finalizar partida". */
+export function mostrarEliminado() {
+  wirearModalesDecision();
+  alternarModal('eliminated-modal', true);
+  return new Promise((resolve) => { _resolverEliminado = resolve; });
 }
 
 export function mostrarPreviewDisparo(distanciaKm, flightMs) {

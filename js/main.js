@@ -23,6 +23,7 @@ const shotsEnProcesoDeResolucion = new Set();
 let modoApuntando = false;
 let destinoElegido = null;
 let nombreEquipoActual = null;
+let jugadorEliminado = false;
 
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
@@ -120,13 +121,35 @@ async function resolverPartidaActiva() {
 async function finalizarPartida() {
   const ok = await UI.confirmarFinalizar();
   if (!ok) return;
+  await cerrarPartida();
+}
+
+async function cerrarPartida() {
+  try {
+    await RT.cancelarDisparosPropios(estadoJugador.playerId, deviceId);
+  } catch (err) {
+    console.warn('No se pudieron cancelar los disparos propios:', err);
+  }
   try {
     await RT.finalizarSesion(deviceId);
   } catch (err) {
     console.warn('No se pudo finalizar la sesión:', err);
   }
-  // Recarga: la próxima entrada con el mismo nickname será una partida nueva.
   location.reload();
+}
+
+// Eliminación: el Worker ha rechazado un disparo (403 eliminated) o Firebase
+// informó de status 'down'. Se bloquea el apuntado, se avisa al jugador y se
+// finaliza la partida.
+async function manejarEliminacion() {
+  if (jugadorEliminado) return;
+  jugadorEliminado = true;
+  cancelarApuntado();
+  const btnFire = document.getElementById('btn-fire');
+  if (btnFire) btnFire.disabled = true;
+  UI.mostrarToast('Has sido eliminado. Finalizando la partida…', 'error');
+  await UI.mostrarEliminado();
+  await cerrarPartida();
 }
 
 // ---------- Jugador propio ----------
@@ -134,6 +157,10 @@ async function finalizarPartida() {
 function onCambioJugadorPropio(data) {
   if (!data) return;
   Object.assign(estadoJugador, data);
+  if (data.status === 'down') {
+    manejarEliminacion();
+    return;
+  }
   if (data.teamId) {
     Teams.observarEquipo(data.teamId, (team) => {
       nombreEquipoActual = team?.name || null;
@@ -260,6 +287,10 @@ function onClickMapa(e) {
 
 async function confirmarDisparo() {
   if (!destinoElegido) return;
+  if (jugadorEliminado || estadoJugador.status !== 'alive') {
+    await manejarEliminacion();
+    return;
+  }
   if (Date.now() < (estadoJugador.nextShotAvailableAt || 0)) {
     UI.mostrarToast('Todavía en recarga.', 'error');
     return;
@@ -269,9 +300,19 @@ async function confirmarDisparo() {
   const flightMs = calcularFlightMs(distanciaKm);
   const impactAt = Date.now() + flightMs;
 
-  const shotId = await RT.crearDisparo(
-    estadoJugador.playerId, estadoJugador.nickname, destinoElegido.lat, destinoElegido.lng, impactAt
-  );
+  let shotId;
+  try {
+    shotId = await RT.crearDisparo(
+      estadoJugador.playerId, estadoJugador.nickname, destinoElegido.lat, destinoElegido.lng, impactAt
+    );
+  } catch (err) {
+    if (err.eliminated) {
+      await manejarEliminacion();
+      return;
+    }
+    UI.mostrarToast(err.message, 'error');
+    return;
+  }
 
   fetch(`${WORKER_BASE_URL}/notify-threatened`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shotId }),

@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getDatabase, ref, set, update, onValue, push, get, serverTimestamp, onDisconnect,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
-import { FIREBASE_CONFIG } from './config.js';
+import { FIREBASE_CONFIG, WORKER_BASE_URL } from './config.js';
 
 const app = initializeApp(FIREBASE_CONFIG);
 export const db = getDatabase(app);
@@ -68,13 +68,34 @@ export function suscribirseATodosJugadores(callback) {
 
 // ---------- Disparos ----------
 
+/**
+ * Crea un disparo a través del Worker (POST /fire-shot). El Worker valida que
+ * el tirador siga vivo; si no, lanza un Error con la propiedad `eliminated` en
+ * true para que el cliente pueda finalizar la partida.
+ */
 export async function crearDisparo(shooterId, shooterNickname, destLat, destLng, impactAt) {
-  const shotRef = push(ref(db, 'shots'));
-  await set(shotRef, {
-    shooterId, shooterNickname, destLat, destLng,
-    firedAt: Date.now(), impactAt, resolved: false,
+  const res = await fetch(`${WORKER_BASE_URL}/fire-shot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerId: shooterId, nickname: shooterNickname, destLat, destLng, impactAt }),
   });
-  return shotRef.key;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.shotId) {
+    const err = new Error(data.error || 'El Worker rechazó el disparo');
+    if (data.eliminated) err.eliminated = true;
+    throw err;
+  }
+  return data.shotId;
+}
+
+/** Pide al Worker que anule los disparos en vuelo del jugador al finalizar la partida. */
+export async function cancelarDisparosPropios(playerId, deviceId) {
+  const res = await fetch(`${WORKER_BASE_URL}/cancel-player-shots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerId, deviceId }),
+  });
+  if (!res.ok) throw new Error('No se pudieron cancelar los disparos propios');
 }
 
 export function suscribirseADisparos(callback) {

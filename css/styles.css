@@ -205,6 +205,9 @@ html, body {
 .btn-fire-toggle.active {
   background: var(--red-dim); border-color: #6A2A2E; color: var(--red);
 }
+.btn-fire-toggle:disabled {
+  opacity: 0.45; cursor: not-allowed;
+}
 
 .btn-fire {
   font-family: var(--mono); font-size: 12px; letter-spacing: 0.5px;
