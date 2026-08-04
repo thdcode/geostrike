@@ -63,6 +63,7 @@ html, body {
 }
 .missile-icon.enemy .missile-svg { fill: var(--red); filter: drop-shadow(0 0 6px var(--red)); }
 .missile-icon.preview .missile-svg { fill: #8AD8FF; filter: drop-shadow(0 0 5px #8AD8FF); }
+.missile-icon.contramedida .missile-svg { fill: #4FC3F7; filter: drop-shadow(0 0 6px #4FC3F7); }
 .missile-icon.amenaza .missile-svg { animation: amenaza-flash 0.9s ease-in-out infinite; }
 
 @keyframes amenaza-flash {
@@ -169,11 +170,13 @@ html, body {
   box-shadow: 0 3px 10px rgba(0,0,0,0.35);
 }
 .threat-banner .countdown-inline { color: var(--text); }
+.threat-banner.protected { border-color: #1E5A42; color: var(--green); }
 .btn-counter-inline {
   background: var(--green-dim); border: 1px solid #1E5A42; color: var(--green);
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px;
   padding: 4px 8px; border-radius: 4px; cursor: pointer;
 }
+.btn-counter-inline:disabled { opacity: 0.55; cursor: default; }
 .btn-counter-inline:hover { background: #1E5A42; }
 
 /* ================= Preview de disparo ================= */

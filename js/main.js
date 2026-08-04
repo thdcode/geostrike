@@ -24,8 +24,11 @@ let modoApuntando = false;
 let destinoElegido = null;
 let nombreEquipoActual = null;
 let jugadorEliminado = false;
+let misPuntos = 0;
+let miDañoMitigado = 0;
 let hpAnterior = 100;
 const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
+const contramedidasLanzadas = new Set(); // shotIds en los que ya lancé una contramedida
 
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
@@ -76,7 +79,14 @@ async function main() {
     Mapa.actualizarBots(bots);
   });
   RT.suscribirseADisparos(onCambioDisparos);
-  Ranking.observarRanking(Ranking.renderizarRanking);
+  Ranking.observarRanking((filas) => {
+    Ranking.renderizarRanking(filas);
+    const miKey = sanitizeKey(estadoJugador.nickname);
+    const miFila = filas.find((f) => f.nickname === miKey);
+    misPuntos = miFila?.points || 0;
+    miDañoMitigado = miFila?.mitigatedDamage || 0;
+    renderHUD(nombreEquipoActual);
+  });
 
   // 5) Interacción con el mapa (apuntar y disparar)
   map.on('click', onClickMapa);
@@ -200,7 +210,14 @@ function renderHUD(teamName) {
     teamName,
     nextShotAvailableAt: estadoJugador.nextShotAvailableAt,
     nextCounterAvailableAt: estadoJugador.nextCounterAvailableAt,
+    puntos: misPuntos,
+    mitigatedDamage: miDañoMitigado,
   });
+}
+
+// Misma sanitización de claves de ranking que el Worker (Firebase prohíbe . # $ [ ]).
+function sanitizeKey(nickname) {
+  return encodeURIComponent((nickname || '').replace(/[.#$[\]]/g, '_'));
 }
 
 // Relojes de cuenta atrás: HUD, banners de amenaza y etiquetas ETA del mapa se
@@ -244,6 +261,9 @@ function onCambioDisparos(shots) {
     const amenaza = !shot.resolved && miUbicacion &&
       haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= WARNING_RADIUS_KM;
     Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
+
+    // Reaplica el color de contramedida si la animación se recreó.
+    if (contramedidasLanzadas.has(shotId)) Mapa.marcarContramedida(shotId);
 
     // Disparo ajeno resuelto dentro de mi radio de salpicadura: se recuerda
     // para atribuir el daño que detectemos en onCambioJugadorPropio.
@@ -301,6 +321,9 @@ async function resolverImpacto(shotId) {
 async function lanzarContramedidaDesdeUI(shotId) {
   try {
     await Counter.lanzar(shotId);
+    contramedidasLanzadas.add(shotId);
+    UI.marcarBannerContramedida(shotId);
+    Mapa.marcarContramedida(shotId);
     UI.mostrarToast('Contramedida lanzada — protege a tu equipo en este disparo.', 'success');
   } catch (err) {
     UI.mostrarToast(err.message, 'error');

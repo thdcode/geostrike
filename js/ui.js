@@ -4,7 +4,7 @@
 
 import { formatMMSS } from './physics.js';
 
-export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextCounterAvailableAt }) {
+export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextCounterAvailableAt, puntos, mitigatedDamage }) {
   const hpFill = document.getElementById('hp-fill');
   const hpLabel = document.getElementById('hp-label');
   if (hpFill) hpFill.style.width = `${Math.max(0, hp)}%`;
@@ -12,6 +12,11 @@ export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextC
 
   const teamLabel = document.getElementById('team-label');
   if (teamLabel) teamLabel.textContent = teamName ? teamName : 'Sin equipo';
+
+  const puntosEl = document.getElementById('hud-points');
+  if (puntosEl) puntosEl.textContent = (puntos ?? 0).toLocaleString('es-ES');
+  const mitigadoEl = document.getElementById('hud-mitigated');
+  if (mitigadoEl) mitigadoEl.textContent = (mitigatedDamage ?? 0).toLocaleString('es-ES');
 
   actualizarCooldown('shot-cooldown', nextShotAvailableAt);
   actualizarCooldown('counter-cooldown', nextCounterAvailableAt);
@@ -106,6 +111,18 @@ export function actualizarCuentaAtrasAmenazas(shots) {
     if (!shot || shot.resolved) continue;
     const el = banner.querySelector('.countdown-inline');
     if (el) el.textContent = formatMMSS(Math.max(0, shot.impactAt - ahora));
+  }
+}
+
+/** Marca el banner de un disparo entrante como protegido por contramedida (botón → texto). */
+export function marcarBannerContramedida(shotId) {
+  const banner = document.getElementById(`threat-${shotId}`);
+  if (!banner) return;
+  const btn = banner.querySelector('button');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Contramedidas lanzadas ✓';
+    banner.classList.add('protected');
   }
 }
 

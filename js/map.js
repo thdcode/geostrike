@@ -24,6 +24,7 @@ const RUTA_MAX_KM = 200;      // longitud máxima del tramo discontinuo que apun
 const COLOR_PROPIO = '#F2A93B';
 const COLOR_ENEMIGO = '#FF6B6B';
 const COLOR_PREVIEW = '#8AD8FF';
+const COLOR_CONTRA = '#4FC3F7'; // celeste: disparo protegido con contramedida
 
 export function inicializarMapa(lat, lng) {
   map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([lat, lng], 6);
@@ -120,6 +121,19 @@ export function actualizarETAs() {
     if (a.estado !== 'vuelo' || !a.etaEl) continue;
     a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - ahora));
   }
+}
+
+/** Cambia el color del disparo para indicar que fue protegido con una contramedida. */
+export function marcarContramedida(shotId) {
+  const a = animaciones.get(shotId);
+  if (!a || a.contramedida) return;
+  a.contramedida = true;
+  a.marcador?.getElement()?.classList.add('contramedida');
+  a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_CONTRA);
+  for (const p of a.estela) p?.setStyle({ color: COLOR_CONTRA });
+  if (a.ruta) a.ruta.setStyle({ color: COLOR_CONTRA });
+  if (a.circulo) a.circulo.setStyle({ color: COLOR_CONTRA });
+  a.ping?.getElement()?.querySelector('.radar-ping-ring')?.style?.setProperty('border-color', COLOR_CONTRA);
 }
 
 // ---------- Preview de apuntado ----------
@@ -220,6 +234,7 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     estado: shot.resolved ? 'impactado' : 'vuelo',
     amenaza: amenaza && !shot.resolved,
     recortarRuta: esEnemigo,
+    contramedida: false,
   };
 
   if (a.estado === 'impactado') {
@@ -301,7 +316,7 @@ function dispararExplosion(a) {
     }).addTo(map);
     setTimeout(() => map.removeLayer(flash), 950);
 
-    let ring = L.circle([dlat, dlng], { radius: 0, color: a.color, weight: 2.5, opacity: 0.9 });
+    let ring = L.circle([dlat, dlng], { radius: 0, color: colorDe(a), weight: 2.5, opacity: 0.9 });
     ring.addTo(map);
     const inicio = Date.now();
     const DURACION = 900;
@@ -315,8 +330,12 @@ function dispararExplosion(a) {
   }
 
   // El círculo de salpicadura queda sólido como residuo del impacto.
-  a.circulo.setStyle({ color: a.color, weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
+  a.circulo.setStyle({ color: colorDe(a), weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
   quitarCapasAnimacion(a);
+}
+
+function colorDe(a) {
+  return a.contramedida ? COLOR_CONTRA : a.color;
 }
 
 function interpolar(a, t) {
