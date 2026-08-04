@@ -14,6 +14,7 @@ const marcadoresBots = new Map(); // botId -> L.CircleMarker
 const animaciones = new Map();    // shotId -> animación del disparo
 
 let rafId = null;
+let seguirShotId = null; // disparo en vuelo al que la vista sigue (tras clic en actividad)
 
 // ---------- Parámetros de la animación ----------
 const TRAIL_MAX_POINTS = 60;  // longitud máxima de la estela (puntos)
@@ -107,6 +108,7 @@ export function listaDisparos() {
 export function limpiarDisparo(shotId) {
   const a = animaciones.get(shotId);
   if (!a) return;
+  if (seguirShotId === shotId) seguirShotId = null;
   quitarCapasAnimacion(a);
   for (const key of ['circulo', 'impactMarker']) {
     if (a[key]) { map.removeLayer(a[key]); a[key] = null; }
@@ -155,25 +157,33 @@ function aplicarColor(a, color, cls) {
 
 // ---------- Enfocar un evento de actividad en el mapa ----------
 
-/** Centra el mapa en un evento del panel de actividad y lo resalta. */
+/** Centra el mapa en un evento del panel de actividad y lo resalta, conservando el zoom. */
 export function enfocarLugar(lugar) {
   if (!lugar || !map || typeof lugar.lat !== 'number' || typeof lugar.lng !== 'number') return;
-  const destino = [lugar.lat, lugar.lng];
   const a = lugar.shotId ? animaciones.get(lugar.shotId) : null;
-  map.setView(destino, 6, { animate: true });
 
   if (a && a.estado === 'vuelo') {
-    // Disparo en curso: resalta el misil.
-    a.marcador?.getElement()?.classList.add('resaltado');
-    a.circulo?.setStyle({ opacity: 1, dashArray: null, fillOpacity: 0.15, color: colorDe(a) });
-    setTimeout(() => {
-      a.marcador?.getElement()?.classList.remove('resaltado');
-      if (a.estado === 'vuelo') a.circulo?.setStyle({ opacity: 0.06, color: colorDe(a) });
-    }, 3500);
-  } else {
-    // Impacto (realizado o recibido): marca temporal en el destino.
-    resaltarPunto(destino[0], destino[1], a ? colorDe(a) : COLOR_PROPIO);
+    // Disparo en curso: se lleva la vista a su posición actual y se le sigue.
+    const pos = interpolar(a, progreso(a));
+    map.panTo(pos, { animate: true });
+    resaltarMisil(a);
+    seguirShotId = a.shotId;
+    return;
   }
+
+  // Impacto (realizado o recibido): centro en el destino conservando el zoom.
+  map.panTo([lugar.lat, lugar.lng], { animate: true });
+  seguirShotId = null;
+  resaltarPunto(lugar.lat, lugar.lng, a ? colorDe(a) : COLOR_PROPIO);
+}
+
+function resaltarMisil(a) {
+  a.marcador?.getElement()?.classList.add('resaltado');
+  a.circulo?.setStyle({ opacity: 1, dashArray: null, fillOpacity: 0.15, color: colorDe(a) });
+  setTimeout(() => {
+    a.marcador?.getElement()?.classList.remove('resaltado');
+    if (a.estado === 'vuelo') a.circulo?.setStyle({ opacity: 0.06, color: colorDe(a) });
+  }, 3500);
 }
 
 function resaltarPunto(lat, lng, color) {
@@ -343,6 +353,10 @@ function actualizarFrame(a) {
 
   if (shot.resolved && a.estado !== 'impactado') {
     a.estado = 'impactado';
+    if (seguirShotId === a.shotId) {
+      seguirShotId = null;
+      map.panTo(a.destino, { animate: true });
+    }
     dispararExplosion(a);
     return;
   }
@@ -356,6 +370,7 @@ function actualizarFrame(a) {
   if (a.etaEl) a.etaEl.textContent = formatMMSS(Math.max(0, shot.impactAt - Date.now()));
   actualizarRuta(a, pos);
   añadirPuntoEstela(a, pos);
+  if (seguirShotId === a.shotId && a.estado === 'vuelo') map.panTo(pos, { animate: false });
 }
 
 function dispararExplosion(a) {
