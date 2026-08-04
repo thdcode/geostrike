@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>GeoStrike</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0B1220">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- ================= HUD superior ================= -->
+<header class="hud-top">
+  <div class="hud-block">
+    <span class="hud-label">VIDA</span>
+    <div class="hp-bar-bg"><div id="hp-fill" class="hp-bar-fill"></div></div>
+    <span id="hp-label" class="hud-value mono">100/100</span>
+  </div>
+  <div class="hud-block">
+    <span class="hud-label">EQUIPO</span>
+    <button id="btn-open-team" class="hud-link"><span id="team-label">Sin equipo</span></button>
+  </div>
+  <div class="hud-block">
+    <span class="hud-label">DISPARO</span>
+    <span id="shot-cooldown" class="hud-value mono ready">Listo</span>
+  </div>
+  <div class="hud-block">
+    <span class="hud-label">CONTRAMEDIDA</span>
+    <span id="counter-cooldown" class="hud-value mono ready">Listo</span>
+  </div>
+  <div class="hud-block hud-actions">
+    <button id="btn-enable-push" class="btn-ghost" title="Activar notificaciones">🔔</button>
+    <button id="btn-open-ranking" class="btn-ghost" title="Ver ranking">🏆</button>
+  </div>
+</header>
+
+<!-- ================= Aviso de selección manual de ubicación ================= -->
+<div id="manual-location-banner" class="banner-manual hidden">
+  Toca el mapa para indicar tu ubicación aproximada.
+</div>
+
+<!-- ================= Avisos de disparo entrante ================= -->
+<div id="threat-banner-container" class="threat-banner-container"></div>
+
+<!-- ================= Preview de disparo (antes de confirmar) ================= -->
+<div id="shot-preview" class="shot-preview hidden">
+  <div class="shot-preview-row">
+    <span class="lbl">Distancia</span>
+    <span class="preview-distance mono">—</span>
+  </div>
+  <div class="shot-preview-row">
+    <span class="lbl">Tiempo de vuelo</span>
+    <span class="preview-time mono">—</span>
+  </div>
+  <div class="shot-preview-actions">
+    <button id="btn-cancel-shot" class="btn-secondary">Cancelar</button>
+    <button id="btn-confirm-shot" class="btn-fire">Confirmar disparo</button>
+  </div>
+</div>
+
+<!-- ================= Barra inferior ================= -->
+<footer class="hud-bottom">
+  <button id="btn-fire" class="btn-fire-toggle">🎯 Apuntar y disparar</button>
+</footer>
+
+<!-- ================= Toasts ================= -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ================= Modal: nickname (obligatorio la primera vez) ================= -->
+<div id="nickname-modal" class="modal-overlay">
+  <div class="modal">
+    <h2>Elige tu nickname</h2>
+    <p class="modal-sub">Se usará para el ranking y para que sepan quién les ha dado. Nunca se muestra tu ubicación.</p>
+    <form id="nickname-form">
+      <input id="nickname-input" type="text" maxlength="20" placeholder="Tu nickname" required autocomplete="off" />
+      <button type="submit" class="btn-fire">Entrar en la partida</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= Modal: equipo ================= -->
+<div id="team-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close-modal="team-modal">✕</button>
+    <h2>Tu equipo</h2>
+
+    <div id="team-info" class="box">
+      <div class="hud-row"><span class="lbl">Código actual</span><span id="team-code-display" class="mono">—</span></div>
+      <div id="team-members" class="team-members-list"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <h3>Crear un equipo nuevo</h3>
+    <form id="team-create-form" class="inline-form">
+      <input id="team-name-input" type="text" maxlength="24" placeholder="Nombre del equipo" required />
+      <button type="submit" class="btn-secondary">Crear</button>
+    </form>
+
+    <h3>Unirse con un código</h3>
+    <form id="team-join-form" class="inline-form">
+      <input id="team-code-input" type="text" maxlength="6" placeholder="Código (ej. X7K2QP)" required />
+      <button type="submit" class="btn-secondary">Unirse</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= Modal: ranking ================= -->
+<div id="ranking-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close-modal="ranking-modal">✕</button>
+    <h2>Ranking global</h2>
+    <table class="ranking-table">
+      <thead>
+        <tr><th>#</th><th>Nickname</th><th>Puntos</th><th>Impactos</th><th>Defensa</th></tr>
+      </thead>
+      <tbody id="ranking-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
