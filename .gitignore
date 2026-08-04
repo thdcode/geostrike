@@ -51,7 +51,7 @@ pnpm-debug.log*
 *.cache
 
 # --- Documentación interna ---
-Docs/
+docs/
 
 # --- Otros por defecto ---
 *.orig
