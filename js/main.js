@@ -372,18 +372,18 @@ function cancelarApuntado() {
 function pedirNickname(sugerido = '') {
   return new Promise((resolve) => {
     const input = document.getElementById('nickname-input');
-    if (input) input.value = sugerido;
+    if (input) input.value = sugerido || '';
     UI.alternarModal('nickname-modal', true);
     const form = document.getElementById('nickname-form');
     form.addEventListener('submit', function onSubmit(e) {
       e.preventDefault();
-      const valor = input.value.trim();
+      const valor = (input.value || '').trim();
       if (!valor) return;
       guardarNickname(valor);
       estadoJugador.nickname = valor;
       form.removeEventListener('submit', onSubmit);
       UI.alternarModal('nickname-modal', false);
-      resolve();
+      resolve(valor);
     });
   });
 }
