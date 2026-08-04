@@ -30,11 +30,11 @@ const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos aj
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
   deviceId = identidad.deviceId;
-  estadoJugador.nickname = identidad.nickname;
 
-  if (!estadoJugador.nickname) {
-    await pedirNickname();
-  }
+  // Siempre se elige el nickname al iniciar la partida. Se pre-rellena con el
+  // guardado en el dispositivo: si se mantiene, se podrá recuperar la partida
+  // activa; si se escribe otro distinto, empieza una partida nueva.
+  estadoJugador.nickname = await pedirNickname(identidad.nickname);
 
   // 0) Recuperar o crear la partida activa (verificación: dispositivo + nickname, sin email)
   const playerId = await resolverPartidaActiva();
@@ -369,13 +369,15 @@ function cancelarApuntado() {
 
 // ---------- Nickname ----------
 
-function pedirNickname() {
+function pedirNickname(sugerido = '') {
   return new Promise((resolve) => {
+    const input = document.getElementById('nickname-input');
+    if (input) input.value = sugerido;
     UI.alternarModal('nickname-modal', true);
     const form = document.getElementById('nickname-form');
     form.addEventListener('submit', function onSubmit(e) {
       e.preventDefault();
-      const valor = document.getElementById('nickname-input').value.trim();
+      const valor = input.value.trim();
       if (!valor) return;
       guardarNickname(valor);
       estadoJugador.nickname = valor;
