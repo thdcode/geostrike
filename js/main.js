@@ -80,7 +80,7 @@ async function main() {
 
   // 6) Bucle periódico: cuenta atrás de amenazas, resolución de disparos vencidos
   setInterval(tick, TICK_INTERVAL_MS);
-  setInterval(() => renderHUD(nombreEquipoActual), 1000);
+  setInterval(actualizarRelojes, 1000);
 
   wireUI();
 }
@@ -156,6 +156,15 @@ function renderHUD(teamName) {
   });
 }
 
+// Relojes de cuenta atrás: HUD, banners de amenaza y etiquetas ETA del mapa se
+// refrescan cada segundo (no solo en el tick de 5s), para que el tiempo hasta
+// el impacto baje de forma continua.
+function actualizarRelojes() {
+  renderHUD(nombreEquipoActual);
+  UI.actualizarCuentaAtrasAmenazas(ultimoSnapshotDisparos);
+  Mapa.actualizarETAs();
+}
+
 function renderPanelEquipo(team) {
   const cont = document.getElementById('team-members');
   if (!cont || !team) return;
@@ -214,7 +223,6 @@ function tick() {
   for (const amenaza of amenazas) {
     const restante = amenaza.impactAt - ahora;
     UI.mostrarBannerAmenaza(amenaza.shotId, amenaza.distanciaKm, restante, lanzarContramedidaDesdeUI);
-    UI.actualizarCuentaAtrasAmenaza(amenaza.shotId, restante);
   }
 }
 

@@ -61,6 +61,7 @@ export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarCo
   const banner = document.createElement('div');
   banner.id = `threat-${shotId}`;
   banner.className = 'threat-banner';
+  banner.dataset.shotId = shotId;
   banner.innerHTML = `
     <span>⚠ Disparo entrante a ${Math.round(distanciaKm)} km — impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
     <button class="btn-counter-inline">Lanzar contramedida</button>
@@ -69,9 +70,16 @@ export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarCo
   cont.appendChild(banner);
 }
 
-export function actualizarCuentaAtrasAmenaza(shotId, msRestante) {
-  const el = document.querySelector(`#threat-${shotId} .countdown-inline`);
-  if (el) el.textContent = formatMMSS(msRestante);
+/** Refresca en lote la cuenta atrás de todos los banners visibles, según el snapshot de disparos. */
+export function actualizarCuentaAtrasAmenazas(shots) {
+  const ahora = Date.now();
+  const banners = document.querySelectorAll('.threat-banner');
+  for (const banner of banners) {
+    const shot = shots[banner.dataset.shotId];
+    if (!shot || shot.resolved) continue;
+    const el = banner.querySelector('.countdown-inline');
+    if (el) el.textContent = formatMMSS(Math.max(0, shot.impactAt - ahora));
+  }
 }
 
 export function quitarBannerAmenaza(shotId) {

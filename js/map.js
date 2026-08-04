@@ -112,6 +112,15 @@ export function limpiarDisparo(shotId) {
   if (animaciones.size === 0 && rafId) { cancelAnimationFrame(rafId); rafId = null; }
 }
 
+/** Refresca las etiquetas ETA de todos los disparos en vuelo. Se llama cada segundo desde main.js. */
+export function actualizarETAs() {
+  const ahora = Date.now();
+  for (const a of animaciones.values()) {
+    if (a.estado !== 'vuelo' || !a.etaEl) continue;
+    a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - ahora));
+  }
+}
+
 // ---------- Preview de apuntado ----------
 
 export function mostrarPreview(origen, destino, flightMs) {
