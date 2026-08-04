@@ -143,6 +143,11 @@ export async function lanzarContramedida(shotId, playerId, teamId) {
   await set(entryRef, { launcherId: playerId, teamId: teamId || null, launchedAt: Date.now() });
 }
 
+/** Observa todas las contramedidas desplegadas: { shotId: [{ launcherId, teamId, launchedAt }] }. */
+export function suscribirseAContramedidas(callback) {
+  return onValue(ref(db, 'countermeasures'), (snap) => callback(snap.val() || {}));
+}
+
 // ---------- Ranking ----------
 
 export function suscribirseARanking(callback) {

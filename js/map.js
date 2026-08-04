@@ -24,7 +24,8 @@ const RUTA_MAX_KM = 200;      // longitud máxima del tramo discontinuo que apun
 const COLOR_PROPIO = '#F2A93B';
 const COLOR_ENEMIGO = '#FF6B6B';
 const COLOR_PREVIEW = '#8AD8FF';
-const COLOR_CONTRA = '#4FC3F7'; // celeste: disparo protegido con contramedida
+const COLOR_CONTRA = '#4FC3F7';      // celeste: disparo protegido con contramedida (la lanzaste tú)
+const COLOR_CONTRA_RECIBIDA = '#9C6ADE'; // violeta: disparo TUYO que está siendo contrarrestado
 
 export function inicializarMapa(lat, lng) {
   map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([lat, lng], 6);
@@ -123,17 +124,72 @@ export function actualizarETAs() {
   }
 }
 
-/** Cambia el color del disparo para indicar que fue protegido con una contramedida. */
+/** Cambia el color del disparo: contramedida desplegada por ti (protección) → celeste. */
 export function marcarContramedida(shotId) {
   const a = animaciones.get(shotId);
-  if (!a || a.contramedida) return;
+  if (!a) return;
   a.contramedida = true;
-  a.marcador?.getElement()?.classList.add('contramedida');
-  a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_CONTRA);
-  for (const p of a.estela) p?.setStyle({ color: COLOR_CONTRA });
-  if (a.ruta) a.ruta.setStyle({ color: COLOR_CONTRA });
-  if (a.circulo) a.circulo.setStyle({ color: COLOR_CONTRA });
-  a.ping?.getElement()?.querySelector('.radar-ping-ring')?.style?.setProperty('border-color', COLOR_CONTRA);
+  aplicarColor(a, COLOR_CONTRA, 'contramedida');
+}
+
+/** Cambia el color del disparo: disparo TUYO que está siendo contrarrestado → violeta. */
+export function marcarContracada(shotId) {
+  const a = animaciones.get(shotId);
+  if (!a) return;
+  a.contracada = true;
+  aplicarColor(a, COLOR_CONTRA_RECIBIDA, 'contracada');
+}
+
+function aplicarColor(a, color, cls) {
+  const el = a.marcador?.getElement();
+  if (el) {
+    el.classList.remove('contramedida', 'contracada');
+    el.classList.add(cls);
+  }
+  a.impactMarker?.getElement()?.style?.setProperty('color', color);
+  for (const p of a.estela) p?.setStyle({ color });
+  if (a.ruta) a.ruta.setStyle({ color });
+  if (a.circulo) a.circulo.setStyle({ color });
+  a.ping?.getElement()?.querySelector('.radar-ping-ring')?.style?.setProperty('border-color', color);
+}
+
+// ---------- Enfocar un evento de actividad en el mapa ----------
+
+/** Centra el mapa en un evento del panel de actividad y lo resalta. */
+export function enfocarLugar(lugar) {
+  if (!lugar || !map || typeof lugar.lat !== 'number' || typeof lugar.lng !== 'number') return;
+  const destino = [lugar.lat, lugar.lng];
+  const a = lugar.shotId ? animaciones.get(lugar.shotId) : null;
+  map.setView(destino, 6, { animate: true });
+
+  if (a && a.estado === 'vuelo') {
+    // Disparo en curso: resalta el misil.
+    a.marcador?.getElement()?.classList.add('resaltado');
+    a.circulo?.setStyle({ opacity: 1, dashArray: null, fillOpacity: 0.15, color: colorDe(a) });
+    setTimeout(() => {
+      a.marcador?.getElement()?.classList.remove('resaltado');
+      if (a.estado === 'vuelo') a.circulo?.setStyle({ opacity: 0.06, color: colorDe(a) });
+    }, 3500);
+  } else {
+    // Impacto (realizado o recibido): marca temporal en el destino.
+    resaltarPunto(destino[0], destino[1], a ? colorDe(a) : COLOR_PROPIO);
+  }
+}
+
+function resaltarPunto(lat, lng, color) {
+  const ring = L.circle([lat, lng], {
+    radius: SPLASH_RADIUS_KM * 1000, color, weight: 2.5, dashArray: null,
+    fillOpacity: 0.1, interactive: false,
+  }).addTo(map);
+  const center = L.marker([lat, lng], {
+    icon: L.divIcon({ className: 'impact-x-icon', html: '✕', iconSize: [14, 14] }),
+    interactive: false, keyboard: false,
+  }).addTo(map);
+  center.getElement().style.color = color;
+  setTimeout(() => {
+    map.removeLayer(ring);
+    map.removeLayer(center);
+  }, 4000);
 }
 
 // ---------- Preview de apuntado ----------
@@ -335,7 +391,9 @@ function dispararExplosion(a) {
 }
 
 function colorDe(a) {
-  return a.contramedida ? COLOR_CONTRA : a.color;
+  if (a.contracada) return COLOR_CONTRA_RECIBIDA;
+  if (a.contramedida) return COLOR_CONTRA;
+  return a.color;
 }
 
 function interpolar(a, t) {

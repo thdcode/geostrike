@@ -264,6 +264,18 @@ html, body {
 .activity-entry.tactivo-hit { border-left-color: var(--green); }
 .activity-entry.tactivo-damage { border-left-color: var(--red); }
 .activity-entry.tactivo-info { border-left-color: var(--muted); }
+.activity-entry.clicable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
+.activity-entry.clicable:hover { background: var(--panel-3, #152033); transform: translateX(-2px); }
+
+.impact-x-icon {
+  background: transparent; border: none; font-size: 16px; font-weight: 700;
+  line-height: 1; text-shadow: 0 0 6px rgba(0,0,0,0.8);
+}
+
+.missile-icon.resaltado .missile-svg {
+  filter: drop-shadow(0 0 8px currentColor) brightness(1.6);
+}
+.missile-icon.contracada .missile-svg { fill: #9C6ADE; filter: drop-shadow(0 0 6px #9C6ADE); }
 
 /* ================= Modales ================= */
 .modal-overlay {

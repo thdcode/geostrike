@@ -49,28 +49,61 @@ export function mostrarToast(mensaje, tipo = 'info') {
   }, 5000);
 }
 
-export function mostrarResultadoImpacto({ hits, totalPoints }) {
+export function mostrarResultadoImpacto({ hits, totalPoints }, destino = null) {
   if (!hits || hits.length === 0) {
     mostrarToast('Sin impactos — nadie estaba en el radio de 50 km.', 'info');
-    anadirActividad('🎯 Disparo resuelto sin impacto.', 'info');
+    anadirActividad('🎯 Disparo resuelto sin impacto.', 'info', destino);
     return;
   }
   const detalle = hits.map((h) => `${h.nickname} (+${h.points})`).join(', ');
   mostrarToast(`¡Impacto! ${detalle} · Total: +${totalPoints} puntos`, 'success');
-  anadirActividad(`🎯 ¡Impacto! ${detalle} · Total +${totalPoints}.`, 'hit');
+  anadirActividad(`🎯 ¡Impacto! ${detalle} · Total +${totalPoints}.`, 'hit', destino);
 }
 
 // ---------- Panel de actividad ----------
 
 const TIPO_CLASE = { shot: 'tactivo-shot', hit: 'tactivo-hit', damage: 'tactivo-damage', info: 'tactivo-info' };
 
-/** Añade una entrada al panel de actividad (la más reciente arriba). */
-export function anadirActividad(texto, tipo = 'info') {
+/** Callback que main.js registra para llevar un evento del panel al mapa. */
+let onActividadClick = null;
+
+export function setOnActividadClick(fn) {
+  onActividadClick = fn;
+  wireActividadClick();
+}
+
+let _actividadClickWireado = false;
+function wireActividadClick() {
+  if (_actividadClickWireado) return;
+  _actividadClickWireado = true;
+  const list = document.getElementById('activity-list');
+  list?.addEventListener('click', (e) => {
+    const el = e.target.closest('.activity-entry');
+    if (!el || !onActividadClick) return;
+    const lat = Number(el.dataset.lat);
+    const lng = Number(el.dataset.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    onActividadClick({ lat, lng, shotId: el.dataset.shotId || null });
+  });
+}
+
+/**
+ * Añade una entrada al panel de actividad (la más reciente arriba).
+ * `destino` opcional { lat, lng, shotId }: hace la entrada clicable y la
+ * muestra en el mapa.
+ */
+export function anadirActividad(texto, tipo = 'info', destino = null) {
   const list = document.getElementById('activity-list');
   if (!list) return;
   const el = document.createElement('div');
   el.className = `activity-entry ${TIPO_CLASE[tipo] || 'tactivo-info'}`;
   el.textContent = texto;
+  if (destino && Number.isFinite(destino.lat) && Number.isFinite(destino.lng)) {
+    el.dataset.lat = destino.lat;
+    el.dataset.lng = destino.lng;
+    if (destino.shotId) el.dataset.shotId = destino.shotId;
+    el.classList.add('clicable');
+  }
   list.prepend(el);
   while (list.children.length > 50) list.lastElementChild.remove();
 }

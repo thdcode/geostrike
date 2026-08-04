@@ -29,6 +29,7 @@ let miDañoMitigado = 0;
 let hpAnterior = 100;
 const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
 const contramedidasLanzadas = new Set(); // shotIds en los que ya lancé una contramedida
+const misDisparosContracados = new Set(); // shotIds (disparos MÍOS) contra los que el enemigo lanzó contramedida
 
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
@@ -79,6 +80,7 @@ async function main() {
     Mapa.actualizarBots(bots);
   });
   RT.suscribirseADisparos(onCambioDisparos);
+  RT.suscribirseAContramedidas(onCambioContramedidas);
   Ranking.observarRanking((filas) => {
     Ranking.renderizarRanking(filas);
     const miKey = sanitizeKey(estadoJugador.nickname);
@@ -96,6 +98,7 @@ async function main() {
   setInterval(actualizarRelojes, 1000);
 
   wireUI();
+  UI.setOnActividadClick((lugar) => Mapa.enfocarLugar(lugar));
 }
 
 // ---------- Recuperación de partida activa ----------
@@ -182,7 +185,8 @@ function onCambioJugadorPropio(data) {
       ultimo && ultimo.nickname
         ? `💥 Impacto recibido de ${ultimo.nickname} · −${dañoRecibido} vida`
         : `💥 Has recibido ${dañoRecibido} de daño`,
-      'damage'
+      'damage',
+      ultimo ? { lat: ultimo.lat, lng: ultimo.lng, shotId: ultimo.shotId } : null
     );
   }
   hpAnterior = hpNuevo;
@@ -264,18 +268,19 @@ function onCambioDisparos(shots) {
 
     // Reaplica el color de contramedida si la animación se recreó.
     if (contramedidasLanzadas.has(shotId)) Mapa.marcarContramedida(shotId);
+    if (misDisparosContracados.has(shotId)) Mapa.marcarContracada(shotId);
 
     // Disparo ajeno resuelto dentro de mi radio de salpicadura: se recuerda
     // para atribuir el daño que detectemos en onCambioJugadorPropio.
     if (shot.resolved && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
         haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= SPLASH_RADIUS_KM) {
-      impactosCercanos.set(shotId, { nickname: shot.shooterNickname, ts: Date.now() });
+      impactosCercanos.set(shotId, { shotId, nickname: shot.shooterNickname, ts: Date.now(), lat: shot.destLat, lng: shot.destLng });
     }
 
     if (shot.resolved && shot.result && shot.shooterId === estadoJugador.playerId) {
       if (!shotsYaResueltosMostrados.has(shotId)) {
         shotsYaResueltosMostrados.add(shotId);
-        UI.mostrarResultadoImpacto(shot.result);
+        UI.mostrarResultadoImpacto(shot.result, { lat: shot.destLat, lng: shot.destLng, shotId });
       }
     }
 
@@ -330,6 +335,24 @@ async function lanzarContramedidaDesdeUI(shotId) {
   }
 }
 
+// Cuando el enemigo lanza una contramedida contra un disparo MÍO, se pinta
+// de violeta (distinguiéndolo del celeste que significa "contramedida tuya").
+function onCambioContramedidas(contramedidas) {
+  const miEquipo = estadoJugador.teamId || null;
+  for (const [shotId, entradas] of Object.entries(contramedidas || {})) {
+    const shot = ultimoSnapshotDisparos?.[shotId];
+    if (!shot || shot.shooterId !== estadoJugador.playerId) continue; // solo mis disparos
+    const hayAtacante = (entradas || []).some(
+      (e) => e.launcherId !== estadoJugador.playerId && (miEquipo == null || e.teamId !== miEquipo)
+    );
+    if (hayAtacante && !misDisparosContracados.has(shotId)) {
+      misDisparosContracados.add(shotId);
+      Mapa.marcarContracada(shotId);
+      UI.mostrarToast('⚠ Tu disparo está siendo contrarrestado por el enemigo.', 'error');
+    }
+  }
+}
+
 // ---------- Apuntar y disparar ----------
 
 function onClickMapa(e) {
@@ -375,10 +398,15 @@ async function confirmarDisparo() {
   }).catch(() => {}); // el aviso a amenazados no es crítico si falla puntualmente
 
   estadoJugador.nextShotAvailableAt = Date.now() + SHOT_COOLDOWN_MS;
+  const destinoLanzado = { lat: destinoElegido.lat, lng: destinoElegido.lng };
   Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
   cancelarApuntado();
-  UI.anadirActividad(`🚀 Disparo lanzado · destino a ${Math.round(distanciaKm).toLocaleString('es-ES')} km · impacto en ${formatMMSS(flightMs)}`, 'shot');
+  UI.anadirActividad(
+    `🚀 Disparo lanzado · destino a ${Math.round(distanciaKm).toLocaleString('es-ES')} km · impacto en ${formatMMSS(flightMs)}`,
+    'shot',
+    { lat: destinoLanzado.lat, lng: destinoLanzado.lng, shotId }
+  );
   UI.mostrarToast(`Disparo lanzado — impacto en ${formatMMSS(flightMs)}.`, 'success');
 }
 
