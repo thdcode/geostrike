@@ -66,7 +66,12 @@ async function main() {
 
   // 4) Suscripciones en tiempo real
   RT.suscribirseAJugadorPropio(playerId, onCambioJugadorPropio);
-  RT.suscribirseABots((bots) => Mapa.actualizarBots(bots));
+  RT.suscribirseATodosJugadores((players) => {
+    const bots = Object.fromEntries(
+      Object.entries(players || {}).filter(([, p]) => p.isBot === true && p.status !== 'down')
+    );
+    Mapa.actualizarBots(bots);
+  });
   RT.suscribirseADisparos(onCambioDisparos);
   Ranking.observarRanking(Ranking.renderizarRanking);
 

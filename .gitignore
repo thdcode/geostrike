@@ -50,6 +50,9 @@ pnpm-debug.log*
 .cache/
 *.cache
 
+# --- Documentación interna ---
+Docs/
+
 # --- Otros por defecto ---
 *.orig
 *.rej

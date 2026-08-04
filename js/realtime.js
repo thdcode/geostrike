@@ -62,8 +62,8 @@ export function suscribirseAJugadorPropio(playerId, callback) {
 
 // ---------- Bots (sí se muestran en el mapa, no son personas) ----------
 
-export function suscribirseABots(callback) {
-  return onValue(ref(db, 'bots'), (snap) => callback(snap.val() || {}));
+export function suscribirseATodosJugadores(callback) {
+  return onValue(ref(db, 'players'), (snap) => callback(snap.val() || {}));
 }
 
 // ---------- Disparos ----------

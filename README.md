@@ -1,99 +1,131 @@
-# GeoStrike — Cliente
+# GeoStrike — Guía del Jugador
 
-Frontend estático (HTML/CSS/JS vanilla, sin build step) — se sirve tal cual desde GitHub Pages.
+## ¿Qué es GeoStrike?
 
-## 1. Rellenar `js/config.js`
+GeoStrike es un juego multijugador en tiempo real donde cada jugador aparece en un mapa mundial real. Disparas proyectiles hacia cualquier punto del planeta y el tiempo que tardan en llegar depende de la distancia real entre tu posición y el destino. Cuando el proyectil impacta, causa daño por salpicadura en un radio de 50 km.
 
-Es el único archivo que necesitas editar antes de desplegar. Copia ahí:
+**Tu ubicación es completamente privada.** Ningún otro jugador puede ver ni inferir dónde estás, ni siquiera de forma aproximada.
 
-- `FIREBASE_CONFIG` → de tu proyecto Firebase (Project settings → General → tu app web).
-- `WORKER_BASE_URL` → la URL que te dio `wrangler deploy` al desplegar el Worker.
-- `LOCATION_PUBLIC_KEY_B64` → la clave pública NaCl que generaste con `npm run generate-keys` en el proyecto del Worker.
-- `VAPID_PUBLIC_KEY` → la misma clave pública VAPID que pusiste en el `wrangler.toml` del Worker.
+---
 
-Todos estos valores son **públicos por diseño** — la privacidad del juego no depende de ocultarlos, depende del cifrado (nadie sin la clave *privada* correspondiente puede descifrar nada).
+## Cómo jugar
 
-## 2. Probar en local
+### 1. Entrar al juego
 
-Los módulos ES (`type="module"`) no funcionan abriendo `index.html` directamente con `file://` — necesitas un servidor HTTP mínimo. Por ejemplo:
+Al abrir GeoStrike en tu navegador, se te pedirá un **nickname** (apodo). No necesitas crear cuenta ni iniciar sesión. Tu identidad se guarda automáticamente en el dispositivo.
 
-```bash
-npx serve .
-# o
-python3 -m http.server 8080
-```
+### 2. Tu ubicación
 
-Abre `http://localhost:8080` (o el puerto que indique). La geolocalización del navegador también exige HTTPS o `localhost` — en local funciona porque `localhost` está exento de esa restricción.
+El juego solicita acceso a tu ubicación real (GPS del dispositivo). Esto se usa para calcular las distancias de los proyectiles.
 
-## 3. Desplegar en GitHub Pages
+- Si aceptas: apareces en tu posición real en el mapa.
+- Si deniegas: puedes seleccionar manualmente un punto en el mapa como tu ubicación.
 
-```bash
-git init
-git add .
-git commit -m "Cliente inicial de GeoStrike"
-git remote add origin https://github.com/TU_USUARIO/geostrike.git
-git branch -M main
-git push -u origin main
-```
+**Ningún jugador puede ver tu ubicación.** Tu posición se cifra automáticamente antes de enviarse y solo un sistema interno la usa brevemente para calcular impactos. Ni siquiera los desarrolladores del juego pueden verla.
 
-Luego: **Settings → Pages → Source → rama `main`, carpeta `/ (root)`**. Tu juego quedará en `https://TU_USUARIO.github.io/geostrike/`.
+### 3. Disparar
 
-## 4. Ajustar CORS en el Worker (recomendado antes de publicar)
+Haz clic o toca en cualquier punto del mapa para lanzar un proyectil hacia allí.
 
-En `src/index.js` del proyecto del Worker, la función `corsHeaders()` acepta cualquier origen (`*`) para facilitar las pruebas. Antes de publicar de verdad, restringe esto a tu dominio real de GitHub Pages:
+- A mayor distancia, más tiempo tarda en llegar (entre 1 y 10 minutos).
+- Mientras el proyectil está en vuelo, se muestra un círculo de 50 km en el destino indicando la zona de impacto.
+- Si hay jugadores dentro de ese radio al momento del impacto, recibirán daño.
 
-```js
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': 'https://TU_USUARIO.github.io',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
-```
-Y vuelve a desplegar el Worker (`npm run deploy`).
+**Ejemplos de tiempos de vuelo:**
 
-## 5. Iconos de la PWA (opcional)
+| Distancia | Tiempo aproximado |
+|-----------|-------------------|
+| 100 km    | ~1,6 minutos      |
+| 1.000 km  | ~3 minutos        |
+| 5.000 km  | ~5,5 minutos      |
+| 20.000 km | 10 minutos (máx)  |
 
-`manifest.json` y `sw.js` referencian `assets/icons/icon-192.png` y `icon-512.png`, que no vienen incluidos — añádelos si quieres que el juego sea instalable con su propio icono. Sin ellos, el juego funciona igual, solo faltará el icono en el launcher/notificaciones.
+### 4. Vida y respawn
 
-## Estructura
+Cada jugador comienza con 100 puntos de vida (HP). Cuando recibes daño, tu HP baja. Si llega a 0, quedas "caído" durante unos segundos y reapareces con vida completa en tu misma posición.
 
-```
-index.html
-manifest.json
-sw.js                  → service worker, solo para Web Push
-css/
-  styles.css
-js/
-  config.js            → ÚNICO archivo a editar antes de desplegar
-  main.js              → orquestación general
-  geolocation.js
-  crypto.js             → cifrado NaCl + caché local cifrada (AES-GCM)
-  player.js
-  realtime.js           → toda la comunicación con Firebase
-  map.js                → Leaflet: solo tu marcador + bots + círculos de impacto
-  physics.js            → Haversine + tiempo de vuelo local
-  teams.js
-  countermeasures.js
-  push.js
-  ranking.js
-  ui.js                 → HUD, modales, toasts, avisos
-```
+### 5. Cooldown
 
-## Notas importantes
+No puedes disparar continuamente. Después de cada disparo, hay un período de recarga que debes esperar antes de volver a disparar.
 
-- El mapa **nunca** dibuja marcadores de otros jugadores reales — solo el tuyo propio y los bots. Aunque el cliente puede leer `players/*` de Firebase, el campo de ubicación es un blob cifrado inútil sin la clave privada del Worker.
-- La detección de "¿me amenaza este disparo?" (banner + contramedida) se calcula en tu propio navegador, con tu posición real — nunca se envía a nadie más que a ti mismo.
-- Cualquier cliente conectado puede "empujar" la resolución de un disparo vencido llamando al Worker (`tick()` en `main.js`) — es una simplificación deliberada del MVP; si en pruebas ves disparos que tardan en resolverse por falta de clientes conectados, la mejora natural es añadir un Cron Trigger adicional en el Worker como red de seguridad (ver plan, sección 9).
-- **Sesiones / recuperación de partida** (sin email ni cuentas): la identidad se verifica con el identificador del dispositivo (`geostrike:deviceId` en localStorage) + nickname. Al entrar, el cliente lee `sessions/{deviceId}`; si hay una partida activa con el mismo nickname, se ofrece recuperarla; si no, crea una partida nueva. El botón **⏹ Finalizar partida** marca `sessions/{deviceId}/active = false`, así la próxima entrada con el mismo nickname empieza de cero. Añade este nodo a las Security Rules:
+---
 
-```json
-"sessions": {
-  "$deviceId": {
-    ".read": true,
-    ".write": true
-  }
-}
-```
+## Equipos
 
+Puedes jugar solo o formar equipo con otros jugadores.
+
+### Crear un equipo
+
+Desde el menú del juego, selecciona "Crear equipo". Se generará un código de 6 caracteres que puedes compartir con tus amigos por WhatsApp, Discord, o cualquier otra forma.
+
+### Unirse a un equipo
+
+Introduce el código que recibiste de un compañero. Al unirte, abandonas cualquier equipo anterior.
+
+### Ventajas de jugar en equipo
+
+- Las **contramedidas** que lances protegen a tu equipo completo.
+- Puedes coordinar ataques y defensas con tus compañeros.
+
+**Importante:** Unirse a un equipo NO revela tu ubicación a tus compañeros. Tu posición sigue estando cifrada.
+
+---
+
+## Contramedidas
+
+Cuando recibes un aviso de que un proyectil amenaza tu posición, puedes lanzar una **contramedida** para reducir el daño que recibirás.
+
+- Cada contramedida reduce el daño un 15%.
+- Varias contramedidas se acumulan hasta un máximo del 60% de reducción.
+- Solo protegen al jugador que la lanzó y a su equipo.
+- Hay un cooldown entre contramedidas (90 segundos).
+
+**Consejo:** Si estás en un equipo grande, coordina con tus compañeros para lanzar contramedidas juntos y maximizar la protección.
+
+---
+
+## Bots
+
+En zonas con pocos jugadores reales, aparecen bots (oponentes controlados por el sistema) para mantener la actividad. Los bots se comportan como jugadores normales: disparan, reciben daño y pueden impactarte si estás dentro de su radio.
+
+- Los bots aparecen como marcadores en el mapa.
+- Impactar a un bot te da la mitad de puntos que impactar a un jugador real.
+
+---
+
+## Ranking
+
+El juego mantiene un ranking global con:
+
+- **Puntos de ataque:** por cada jugador o bot que impactes.
+- **Puntos de defensa:** por cada contramedida que reduzca daño real a ti o a tu equipo.
+- **Impactos totales** y **eliminaciones.**
+
+El ranking se actualiza en tiempo real y es visible desde el HUD del juego.
+
+---
+
+## Notificaciones
+
+Si aceptas las notificaciones del navegador, recibirás una alerta incluso con el navegador cerrado cuando un proyectil amenace tu posición. La notificación incluye el tiempo restante antes del impacto y un enlace rápido para abrir el juego.
+
+Si deniegas las notificaciones, recibirás avisos visuales y sonidos mientras la pestaña del juego esté abierta.
+
+---
+
+## Privacidad y seguridad
+
+- **Tu ubicación nunca se almacena en texto claro.** Siempre está cifrada.
+- **Ningún jugador puede ver la ubicación de otro.** Ni siquiera con las herramientas de desarrollador del navegador.
+- **Los resultados de impacto muestran nicknames, nunca posiciones.** Sabrás a quién le diste, pero no dónde estaba.
+- **No se requiere cuenta ni correo electrónico.** Tu identidad es solo tu nickname y tu dispositivo.
+
+---
+
+## Consejos
+
+1. **Muévete por el mapa** para elegir dónde disparar. Puedes hacer zoom y desplazarte libremente.
+2. **Usa las contramedidas** cuando recibas un aviso de disparo entrante. El tiempo de vuelo te da margen para reaccionar.
+3. **Únete a un equipo** si quieres protegerte mejor. Las contramedidas colaborativas son más efectivas con más jugadores.
+4. **Zonas pobladas son más peligrosas.** Si estás en una ciudad grande, es más probable que recibas disparos.
+5. **Los bots no son inútiles.** Aunque den menos puntos, ayudan a mantener el mapa activo y pueden impactarte.
