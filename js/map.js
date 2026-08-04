@@ -6,7 +6,7 @@
 //     perímetro, sin inventar ni revelar el origen del jugador que dispara.
 
 import { SPLASH_RADIUS_KM } from './config.js';
-import { formatMMSS } from './physics.js';
+import { formatMMSS, haversineKm } from './physics.js';
 
 let map;
 let miMarcador = null;
@@ -19,6 +19,7 @@ let rafId = null;
 const TRAIL_MAX_POINTS = 60;  // longitud máxima de la estela (puntos)
 const TRAIL_GAP_MS = 140;     // cada cuánto se añade un punto a la estela
 const APROX_RADIO_KM = 150;   // distancia del punto sintético de llegada de disparos ajenos
+const RUTA_MAX_KM = 200;      // longitud máxima del tramo discontinuo que apunta al impacto
 
 const COLOR_PROPIO = '#F2A93B';
 const COLOR_ENEMIGO = '#FF6B6B';
@@ -218,6 +219,7 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     puntos: [], ultimoPuntoAt: 0, ultimaPos: null, color,
     estado: shot.resolved ? 'impactado' : 'vuelo',
     amenaza: amenaza && !shot.resolved,
+    recortarRuta: esEnemigo,
   };
 
   if (a.estado === 'impactado') {
@@ -226,8 +228,11 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     quitarCapasAnimacion(a);
   } else if (prefersReducedMotion()) {
     const t = progreso(a);
-    a.marcador.setLatLng(interpolar(a, t));
+    const pos = interpolar(a, t);
+    a.marcador.setLatLng(pos);
+    a.etaMarker.setLatLng(pos);
     a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - Date.now()));
+    actualizarRuta(a, pos);
   } else {
     marcador.getElement().classList.toggle('amenaza', a.amenaza);
   }
@@ -275,8 +280,10 @@ function actualizarFrame(a) {
   const t = progreso(a);
   const pos = interpolar(a, t);
   if (a.marcador) a.marcador.setLatLng(pos);
+  if (a.etaMarker) a.etaMarker.setLatLng(pos);
   rotarMarcador(a, pos);
   if (a.etaEl) a.etaEl.textContent = formatMMSS(Math.max(0, shot.impactAt - Date.now()));
+  actualizarRuta(a, pos);
   añadirPuntoEstela(a, pos);
 }
 
@@ -314,6 +321,16 @@ function dispararExplosion(a) {
 
 function interpolar(a, t) {
   return interpolateGreatCircle(a.origenLat, a.origenLng, a.destino[0], a.destino[1], t);
+}
+
+/** El tramo discontinuo arranca en la posición actual y apunta al impacto, con longitud máxima fija. */
+function actualizarRuta(a, pos) {
+  if (!a.ruta || !a.recortarRuta) return;
+  const restante = haversineKm(pos[0], pos[1], a.destino[0], a.destino[1]);
+  const limite = restante <= RUTA_MAX_KM
+    ? a.destino
+    : pointAtBearing(pos[0], pos[1], bearingTo(pos[0], pos[1], a.destino[0], a.destino[1]), RUTA_MAX_KM);
+  a.ruta.setLatLngs([pos, limite]);
 }
 
 function progreso(a) {
