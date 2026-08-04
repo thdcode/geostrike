@@ -86,3 +86,14 @@ js/
 - El mapa **nunca** dibuja marcadores de otros jugadores reales — solo el tuyo propio y los bots. Aunque el cliente puede leer `players/*` de Firebase, el campo de ubicación es un blob cifrado inútil sin la clave privada del Worker.
 - La detección de "¿me amenaza este disparo?" (banner + contramedida) se calcula en tu propio navegador, con tu posición real — nunca se envía a nadie más que a ti mismo.
 - Cualquier cliente conectado puede "empujar" la resolución de un disparo vencido llamando al Worker (`tick()` en `main.js`) — es una simplificación deliberada del MVP; si en pruebas ves disparos que tardan en resolverse por falta de clientes conectados, la mejora natural es añadir un Cron Trigger adicional en el Worker como red de seguridad (ver plan, sección 9).
+- **Sesiones / recuperación de partida** (sin email ni cuentas): la identidad se verifica con el identificador del dispositivo (`geostrike:deviceId` en localStorage) + nickname. Al entrar, el cliente lee `sessions/{deviceId}`; si hay una partida activa con el mismo nickname, se ofrece recuperarla; si no, crea una partida nueva. El botón **⏹ Finalizar partida** marca `sessions/{deviceId}/active = false`, así la próxima entrada con el mismo nickname empieza de cero. Añade este nodo a las Security Rules:
+
+```json
+"sessions": {
+  "$deviceId": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+

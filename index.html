@@ -35,6 +35,7 @@
   <div class="hud-block hud-actions">
     <button id="btn-enable-push" class="btn-ghost" title="Activar notificaciones">🔔</button>
     <button id="btn-open-ranking" class="btn-ghost" title="Ver ranking">🏆</button>
+    <button id="btn-end-game" class="btn-ghost" title="Finalizar partida">⏹</button>
   </div>
 </header>
 
@@ -70,8 +71,32 @@
 <!-- ================= Toasts ================= -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ================= Modal: recuperar partida activa ================= -->
+<div id="recover-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Partida activa</h2>
+    <p class="modal-sub">Se ha encontrado una partida activa en este dispositivo para el nickname <strong id="recover-nickname" class="mono"></strong>.</p>
+    <div class="modal-actions">
+      <button id="btn-recover-yes" class="btn-fire">Recuperar partida</button>
+      <button id="btn-recover-no" class="btn-secondary">Empezar nueva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Modal: finalizar partida ================= -->
+<div id="finalize-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Finalizar partida</h2>
+    <p class="modal-sub">Tu partida activa se cerrará. La próxima vez que entres con este nickname empezarás una partida nueva desde cero.</p>
+    <div class="modal-actions">
+      <button id="btn-finalize-confirm" class="btn-fire">Finalizar partida</button>
+      <button id="btn-finalize-cancel" class="btn-secondary">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= Modal: nickname (obligatorio la primera vez) ================= -->
-<div id="nickname-modal" class="modal-overlay">
+<div id="nickname-modal" class="modal-overlay hidden">
   <div class="modal">
     <h2>Elige tu nickname</h2>
     <p class="modal-sub">Se usará para el ranking y para que sepan quién les ha dado. Nunca se muestra tu ubicación.</p>

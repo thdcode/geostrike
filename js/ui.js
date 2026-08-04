@@ -85,6 +85,57 @@ export function alternarModal(modalId, mostrar) {
   modal.classList.toggle('hidden', !mostrar);
 }
 
+// ---------- Modales de decisión (promesa) ----------
+
+let _resolverRecuperacion = null;
+let _resolverFinalizar = null;
+let _modalesDecisiónWireados = false;
+
+function wirearModalesDecision() {
+  if (_modalesDecisiónWireados) return;
+  _modalesDecisiónWireados = true;
+
+  document.getElementById('btn-recover-yes')?.addEventListener('click', () => responderRecuperacion('recuperar'));
+  document.getElementById('btn-recover-no')?.addEventListener('click', () => responderRecuperacion('nueva'));
+
+  document.getElementById('btn-finalize-confirm')?.addEventListener('click', () => responderFinalizar(true));
+  document.getElementById('btn-finalize-cancel')?.addEventListener('click', () => responderFinalizar(false));
+}
+
+function responderRecuperacion(decision) {
+  alternarModal('recover-modal', false);
+  if (_resolverRecuperacion) {
+    const r = _resolverRecuperacion;
+    _resolverRecuperacion = null;
+    r(decision);
+  }
+}
+
+function responderFinalizar(ok) {
+  alternarModal('finalize-modal', false);
+  if (_resolverFinalizar) {
+    const r = _resolverFinalizar;
+    _resolverFinalizar = null;
+    r(ok);
+  }
+}
+
+/** Pregunta al jugador si quiere recuperar su partida activa. Resuelve 'recuperar' | 'nueva'. */
+export function preguntarRecuperacion(nickname) {
+  wirearModalesDecision();
+  const el = document.getElementById('recover-nickname');
+  if (el) el.textContent = nickname;
+  alternarModal('recover-modal', true);
+  return new Promise((resolve) => { _resolverRecuperacion = resolve; });
+}
+
+/** Confirma si el jugador quiere finalizar la partida actual. Resuelve boolean. */
+export function confirmarFinalizar() {
+  wirearModalesDecision();
+  alternarModal('finalize-modal', true);
+  return new Promise((resolve) => { _resolverFinalizar = resolve; });
+}
+
 export function mostrarPreviewDisparo(distanciaKm, flightMs) {
   const el = document.getElementById('shot-preview');
   if (!el) return;

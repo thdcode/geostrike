@@ -43,6 +43,65 @@ html, body {
   text-shadow: 0 0 4px rgba(0,0,0,0.6);
 }
 
+/* ================= Animación de disparos (flyscanner) ================= */
+.leaflet-div-icon.missile-icon,
+.leaflet-div-icon.eta-label-wrap,
+.leaflet-div-icon.radar-ping,
+.leaflet-div-icon.impact-flash {
+  background: transparent;
+  border: none;
+}
+
+.missile-wrap {
+  width: 20px; height: 20px;
+  transition: transform 0.18s linear;
+}
+.missile-svg {
+  width: 20px; height: 20px;
+  fill: var(--amber);
+  filter: drop-shadow(0 0 5px var(--amber));
+}
+.missile-icon.enemy .missile-svg { fill: var(--red); filter: drop-shadow(0 0 6px var(--red)); }
+.missile-icon.preview .missile-svg { fill: #8AD8FF; filter: drop-shadow(0 0 5px #8AD8FF); }
+.missile-icon.amenaza .missile-svg { animation: amenaza-flash 0.9s ease-in-out infinite; }
+
+@keyframes amenaza-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.eta-label {
+  position: relative; top: -28px;
+  transform: translateX(-50%);
+  font-family: var(--mono); font-size: 10px; color: var(--text);
+  background: rgba(11, 18, 32, 0.85); border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+  pointer-events: none;
+}
+
+.radar-ping-ring {
+  width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  border: 2px solid var(--amber); border-radius: 50%;
+  opacity: 0;
+  animation: radar-ping 2.2s ease-out infinite;
+}
+@keyframes radar-ping {
+  0% { transform: scale(0.25); opacity: 0.95; }
+  70% { opacity: 0.25; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+.impact-flash-ring {
+  width: 160px; height: 160px; margin: -80px 0 0 -80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,107,107,0.55) 30%, rgba(255,107,107,0) 70%);
+  animation: impact-flash 0.9s ease-out forwards;
+}
+@keyframes impact-flash {
+  0% { transform: scale(0.15); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
 /* ================= HUD superior ================= */
 .hud-top {
   position: fixed; top: 0; left: 0; right: 0; z-index: 20;
@@ -210,6 +269,10 @@ html, body {
   border: 1px solid var(--border); background: var(--panel-2); border-radius: 6px;
   padding: 10px 12px; margin-bottom: 6px;
 }
+.modal-actions {
+  display: flex; gap: 8px; margin-top: 14px;
+}
+.modal-actions .btn-fire, .modal-actions .btn-secondary { flex: 1; }
 .hud-row { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 6px; }
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
 
@@ -235,5 +298,5 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  * { transition: none !important; animation: none !important; }
 }

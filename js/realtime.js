@@ -11,6 +11,29 @@ import { FIREBASE_CONFIG } from './config.js';
 const app = initializeApp(FIREBASE_CONFIG);
 export const db = getDatabase(app);
 
+// ---------- Sesiones (recuperación de partida activa) ----------
+
+/**
+ * Devuelve la sesión guardada para este dispositivo o null si no existe.
+ * La sesión contiene { playerId, nickname, active }.
+ */
+export async function obtenerSesion(deviceId) {
+  const snap = await get(ref(db, `sessions/${deviceId}`));
+  return snap.exists() ? snap.val() : null;
+}
+
+/** Crea o actualiza la sesión activa de este dispositivo para el nickname dado. */
+export function crearSesion(deviceId, playerId, nickname) {
+  return set(ref(db, `sessions/${deviceId}`), {
+    playerId, nickname, active: true, createdAt: Date.now(),
+  });
+}
+
+/** Marca la sesión como finalizada (el jugador decidió empezar de cero la próxima vez). */
+export function finalizarSesion(deviceId) {
+  return update(ref(db, `sessions/${deviceId}`), { active: false });
+}
+
 // ---------- Jugador propio ----------
 
 export async function registrarJugador(playerId, nickname, locationEnc) {

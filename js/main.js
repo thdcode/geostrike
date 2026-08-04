@@ -1,10 +1,10 @@
 // main.js — orquesta la carga inicial y el bucle de juego.
 // Lee esto de arriba a abajo como el mapa mental de todo el cliente.
 
-import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS } from './config.js';
+import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM } from './config.js';
 import { obtenerUbicacion, seleccionarUbicacionManual } from './geolocation.js';
 import { cifrarUbicacion, cachearUbicacionLocal, leerUbicacionCacheada } from './crypto.js';
-import { obtenerOCrearIdentidad, guardarNickname, estadoJugador } from './player.js';
+import { obtenerIdentidadDispositivo, guardarNickname, leerPlayerIdLegacy, estadoJugador } from './player.js';
 import * as RT from './realtime.js';
 import * as Mapa from './map.js';
 import { haversineKm, calcularFlightMs, formatMMSS } from './physics.js';
@@ -16,6 +16,7 @@ import * as UI from './ui.js';
 
 // ---------- Estado local de la sesión (nunca persistido más allá de la pestaña) ----------
 let miUbicacion = null; // {lat, lng} — solo en memoria
+let deviceId = null;    // identificador del dispositivo (localStorage), clave de la sesión
 let ultimoSnapshotDisparos = {};
 const shotsYaResueltosMostrados = new Set();
 const shotsEnProcesoDeResolucion = new Set();
@@ -24,13 +25,17 @@ let destinoElegido = null;
 let nombreEquipoActual = null;
 
 async function main() {
-  const { playerId, nickname } = obtenerOCrearIdentidad();
-  estadoJugador.playerId = playerId;
-  estadoJugador.nickname = nickname;
+  const identidad = obtenerIdentidadDispositivo();
+  deviceId = identidad.deviceId;
+  estadoJugador.nickname = identidad.nickname;
 
-  if (!nickname) {
+  if (!estadoJugador.nickname) {
     await pedirNickname();
   }
+
+  // 0) Recuperar o crear la partida activa (verificación: dispositivo + nickname, sin email)
+  const playerId = await resolverPartidaActiva();
+  estadoJugador.playerId = playerId;
 
   // 1) Mapa con vista provisional mientras resolvemos la ubicación real
   Mapa.inicializarMapa(20, 0);
@@ -75,6 +80,50 @@ async function main() {
   wireUI();
 }
 
+// ---------- Recuperación de partida activa ----------
+
+/**
+ * Resuelve el playerId de esta sesión. Sin email ni cuentas: la verificación es
+ * "dispositivo (deviceId) + nickname". Si hay una partida activa coincide con el
+ * nickname, se ofrece recuperarla; si no, se crea una partida nueva.
+ */
+async function resolverPartidaActiva() {
+  const sesion = await RT.obtenerSesion(deviceId);
+
+  // Migración: identidad antigua (playerId guardado en localStorage) sin sesión aún.
+  const legacy = leerPlayerIdLegacy();
+  if (!sesion && legacy) {
+    await RT.crearSesion(deviceId, legacy, estadoJugador.nickname);
+    return legacy;
+  }
+
+  if (sesion && sesion.active && sesion.nickname === estadoJugador.nickname) {
+    const decision = await UI.preguntarRecuperacion(estadoJugador.nickname);
+    if (decision === 'recuperar') {
+      await RT.crearSesion(deviceId, sesion.playerId, estadoJugador.nickname);
+      return sesion.playerId;
+    }
+    // "nueva": finaliza la activa y sigue para crear una partida nueva.
+    await RT.finalizarSesion(deviceId);
+  }
+
+  const playerId = crypto.randomUUID();
+  await RT.crearSesion(deviceId, playerId, estadoJugador.nickname);
+  return playerId;
+}
+
+async function finalizarPartida() {
+  const ok = await UI.confirmarFinalizar();
+  if (!ok) return;
+  try {
+    await RT.finalizarSesion(deviceId);
+  } catch (err) {
+    console.warn('No se pudo finalizar la sesión:', err);
+  }
+  // Recarga: la próxima entrada con el mismo nickname será una partida nueva.
+  location.reload();
+}
+
 // ---------- Jugador propio ----------
 
 function onCambioJugadorPropio(data) {
@@ -117,8 +166,17 @@ function renderPanelEquipo(team) {
 function onCambioDisparos(shots) {
   ultimoSnapshotDisparos = shots;
 
+  // Limpia disparos que ya no existen en Firebase (evita capas huérfanas).
+  const idsVistos = new Set(Object.keys(shots));
+  for (const shotId of Mapa.listaDisparos()) {
+    if (shotId !== 'preview' && !idsVistos.has(shotId)) Mapa.limpiarDisparo(shotId);
+  }
+
   for (const [shotId, shot] of Object.entries(shots)) {
-    Mapa.dibujarDisparo(shotId, shot.destLat, shot.destLng, shot.resolved);
+    const origen = shot.shooterId === estadoJugador.playerId ? miUbicacion : null;
+    const amenaza = !shot.resolved && miUbicacion &&
+      haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= WARNING_RADIUS_KM;
+    Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
 
     if (shot.resolved && shot.result && shot.shooterId === estadoJugador.playerId) {
       if (!shotsYaResueltosMostrados.has(shotId)) {
@@ -184,7 +242,7 @@ function onClickMapa(e) {
   const distanciaKm = haversineKm(miUbicacion.lat, miUbicacion.lng, destinoElegido.lat, destinoElegido.lng);
   const flightMs = calcularFlightMs(distanciaKm);
   UI.mostrarPreviewDisparo(distanciaKm, flightMs);
-  Mapa.dibujarDisparo('preview', destinoElegido.lat, destinoElegido.lng, false);
+  Mapa.mostrarPreview(miUbicacion, destinoElegido, flightMs);
 }
 
 async function confirmarDisparo() {
@@ -207,7 +265,7 @@ async function confirmarDisparo() {
   }).catch(() => {}); // el aviso a amenazados no es crítico si falla puntualmente
 
   estadoJugador.nextShotAvailableAt = Date.now() + SHOT_COOLDOWN_MS;
-  Mapa.limpiarDisparo('preview');
+  Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
   cancelarApuntado();
   UI.mostrarToast(`Disparo lanzado — impacto en ${formatMMSS(flightMs)}.`, 'success');
@@ -217,7 +275,7 @@ function cancelarApuntado() {
   modoApuntando = false;
   destinoElegido = null;
   document.getElementById('btn-fire')?.classList.remove('active');
-  Mapa.limpiarDisparo('preview');
+  Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
 }
 
@@ -247,7 +305,7 @@ function wireUI() {
     modoApuntando = !modoApuntando;
     document.getElementById('btn-fire').classList.toggle('active', modoApuntando);
     if (!modoApuntando) {
-      Mapa.limpiarDisparo('preview');
+      Mapa.limpiarPreview();
       UI.ocultarPreviewDisparo();
     }
   });
@@ -261,6 +319,7 @@ function wireUI() {
   );
 
   document.getElementById('btn-open-team')?.addEventListener('click', () => UI.alternarModal('team-modal', true));
+  document.getElementById('btn-end-game')?.addEventListener('click', finalizarPartida);
 
   document.getElementById('team-create-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
