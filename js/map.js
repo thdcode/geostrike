@@ -10,7 +10,11 @@ import { formatMMSS, haversineKm } from './physics.js';
 
 let map;
 let miMarcador = null;
-const marcadoresBots = new Map(); // botId -> L.CircleMarker
+let rendererBots = null; // canvas dedicado: miles de bots sin miles de nodos SVG
+const botsDatos = new Map();     // botId -> { lat, lng, city } (todos los bots activos)
+const marcadoresBots = new Map(); // botId -> L.CircleMarker (solo los visibles en el viewport)
+let botsPendientes = null;
+let botsTimer = null;
 const animaciones = new Map();    // shotId -> animación del disparo
 
 let rafId = null;
@@ -21,6 +25,8 @@ const TRAIL_MAX_POINTS = 60;  // longitud máxima de la estela (puntos)
 const TRAIL_GAP_MS = 140;     // cada cuánto se añade un punto a la estela
 const APROX_RADIO_KM = 150;   // distancia del punto sintético de llegada de disparos ajenos
 const RUTA_MAX_KM = 200;      // longitud máxima del tramo discontinuo que apunta al impacto
+const MAX_ENEMIGOS_ANIMADOS = 12; // tope de disparos ajenos no-amenaza animados a la vez
+let enemigosAnimados = 0;
 
 const COLOR_PROPIO = '#F2A93B';
 const COLOR_ENEMIGO = '#FF6B6B';
@@ -39,6 +45,10 @@ export function inicializarMapa(lat, lng) {
     maxBoundsViscosity: 1.0,
   }).setView([lat, lng], 6);
 
+  // Renderer canvas exclusivo para los bots: soporta miles de marcadores sin
+  // abrumar el DOM, y su repintado está aislado de la animación de disparos.
+  rendererBots = L.canvas({ padding: 0.5 });
+
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 18,
@@ -50,7 +60,19 @@ export function inicializarMapa(lat, lng) {
   map.on('zoomstart', detenerSeguimiento);
   map.getContainer().addEventListener('mousedown', detenerSeguimiento, true);
 
+  // Al mover/alejar el mapa se refresca el culling de bots visibles.
+  map.on('moveend', programarFlushBots);
+  map.on('zoomend', programarFlushBots);
+
   return map;
+}
+
+function programarFlushBots() {
+  if (botsTimer) return;
+  botsTimer = setTimeout(() => {
+    botsTimer = null;
+    procesarBots();
+  }, 1000);
 }
 
 function detenerSeguimiento() {
@@ -72,26 +94,58 @@ export function dibujarMiMarcador(lat, lng) {
 }
 
 export function actualizarBots(bots) {
-  const idsActuales = new Set(Object.keys(bots || {}));
+  botsPendientes = bots || {};
+  programarFlushBots();
+}
 
-  // Elimina bots que ya no existen (respawn en otra ciudad, muerte definitiva, etc.)
-  for (const [botId, marker] of marcadoresBots.entries()) {
-    if (!idsActuales.has(botId)) {
-      map.removeLayer(marker);
-      marcadoresBots.delete(botId);
+function procesarBots() {
+  const datos = botsPendientes;
+  botsPendientes = null;
+
+  // 1) Sincroniza el inventario de bots activos con la última foto (si la hay).
+  if (datos) {
+    for (const [botId, bot] of Object.entries(datos)) {
+      if (bot.status === 'down') continue;
+      const prev = botsDatos.get(botId);
+      if (!prev) {
+        botsDatos.set(botId, { lat: bot.lat, lng: bot.lng, city: bot.zoneCity || '?' });
+      } else {
+        prev.lat = bot.lat;
+        prev.lng = bot.lng;
+        prev.city = bot.zoneCity || prev.city;
+      }
+    }
+    for (const botId of [...botsDatos.keys()]) {
+      const bot = datos[botId];
+      if (!bot || bot.status === 'down') {
+        const m = marcadoresBots.get(botId);
+        if (m) { map.removeLayer(m); marcadoresBots.delete(botId); }
+        botsDatos.delete(botId);
+      }
     }
   }
 
-  for (const [botId, bot] of Object.entries(bots || {})) {
-    if (bot.status === 'down') continue;
+  // 2) Culling por viewport: solo se dibujan los bots dentro de los límites (+margen).
+  const bounds = map.getBounds().pad(0.5);
+  for (const [botId, d] of botsDatos) {
+    if (!bounds.contains([d.lat, d.lng])) continue;
     let marker = marcadoresBots.get(botId);
     if (!marker) {
-      marker = L.circleMarker([bot.lat, bot.lng], {
-        radius: 5, color: '#7C8AA5', fillColor: '#7C8AA5', fillOpacity: 0.8, weight: 1,
-      }).addTo(map).bindTooltip(`Bot · ${bot.zoneCity || '?'}`);
+      const opts = { radius: 5, color: '#7C8AA5', fillColor: '#7C8AA5', fillOpacity: 0.8, weight: 1 };
+      if (rendererBots) opts.renderer = rendererBots;
+      marker = L.circleMarker([d.lat, d.lng], opts).addTo(map).bindTooltip(`Bot · ${d.city}`);
       marcadoresBots.set(botId, marker);
-    } else {
-      marker.setLatLng([bot.lat, bot.lng]);
+    } else if (marker._latlng.lat !== d.lat || marker._latlng.lng !== d.lng) {
+      marker.setLatLng([d.lat, d.lng]);
+    }
+  }
+
+  // 3) Quita marcadores que quedaron fuera del viewport o ya no existen.
+  for (const [botId, marker] of [...marcadoresBots.entries()]) {
+    const d = botsDatos.get(botId);
+    if (!d || !bounds.contains([d.lat, d.lng])) {
+      map.removeLayer(marker);
+      marcadoresBots.delete(botId);
     }
   }
 }
@@ -110,15 +164,24 @@ export function rastrearDisparo(shotId, shot, origen, amenaza = false) {
   if (!a) {
     a = crearAnimacion(shotId, shot, origen, amenaza);
     animaciones.set(shotId, a);
-    if (a.estado === 'vuelo' && !prefersReducedMotion()) arrancarBucle();
+    if (a.estado === 'vuelo' && !a.estatico && !prefersReducedMotion()) arrancarBucle();
     return;
   }
+
+  // Disparo estático (sobre cupo de animados) que se resuelve: se cierra en seco.
+  if (a.estatico && shot.resolved && a.estado !== 'impactado') {
+    a.estado = 'impactado';
+    a.circulo.setStyle({ color: colorDe(a), weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
+    if (a.ruta) { map.removeLayer(a.ruta); a.ruta = null; }
+  }
+
   // El bucle de animación detecta la transición a resolved y dispara la explosión.
   a.shot = shot;
-  a.amenaza = amenaza && !shot.resolved;
+  const vuelveAmenaza = amenaza && !shot.resolved;
+  a.amenaza = vuelveAmenaza;
+  if (vuelveAmenaza && a.tier !== 'full') promocionarADetallado(a);
   a.marcador?.getElement()?.classList.toggle('amenaza', a.amenaza);
 }
-
 export function listaDisparos() {
   return [...animaciones.keys()];
 }
@@ -127,6 +190,7 @@ export function limpiarDisparo(shotId) {
   const a = animaciones.get(shotId);
   if (!a) return;
   if (seguirShotId === shotId) seguirShotId = null;
+  if (a.cuentaCupo) enemigosAnimados = Math.max(0, enemigosAnimados - 1);
   quitarCapasAnimacion(a);
   for (const key of ['circulo', 'impactMarker']) {
     if (a[key]) { map.removeLayer(a[key]); a[key] = null; }
@@ -180,7 +244,7 @@ export function enfocarLugar(lugar) {
   if (!lugar || !map || typeof lugar.lat !== 'number' || typeof lugar.lng !== 'number') return;
   const a = lugar.shotId ? animaciones.get(lugar.shotId) : null;
 
-  if (a && a.estado === 'vuelo') {
+  if (a && a.estado === 'vuelo' && !a.estatico) {
     // Disparo en curso: se lleva la vista a su posición actual y se le sigue.
     const pos = interpolar(a, progreso(a));
     map.panTo(pos, { animate: true });
@@ -253,38 +317,117 @@ export function limpiarPreview() {
 
 // ---------- Interno ----------
 
+/** Sube un disparo reduced/static a detallado cuando pasa a ser una amenaza. */
+function promocionarADetallado(a) {
+  const pos = interpolar(a, progreso(a));
+
+  // Si era estático, no tenía misil: hay que crearlo (y su wrap para rotar).
+  if (!a.marcador) {
+    a.marcador = L.marker(pos, {
+      icon: L.divIcon({
+        className: 'missile-icon enemy',
+        html: '<div class="missile-wrap"><svg viewBox="0 0 24 24" class="missile-svg"><path d="M12 2 L21 22 L12 17.5 L3 22 Z"/></svg></div>',
+        iconSize: [20, 20], iconAnchor: [10, 10],
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+    a.wrap = a.marcador.getElement().querySelector('.missile-wrap');
+    a.estatico = false;
+  }
+
+  if (!a.etaMarker) {
+    a.etaMarker = L.marker(pos, {
+      icon: L.divIcon({
+        className: 'eta-label-wrap',
+        html: '<span class="eta-label mono">--:--</span>',
+        iconSize: [0, 0],
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+    a.etaEl = a.etaMarker.getElement().querySelector('.eta-label');
+  }
+
+  if (!a.ping) {
+    a.ping = L.marker(a.destino, {
+      icon: L.divIcon({
+        className: 'radar-ping',
+        html: `<div class="radar-ping-ring" style="border-color:${a.color}"></div>`,
+        iconSize: [0, 0],
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+  }
+
+  // Si venía reducido (un solo trazo de estela), expande a tres conservando puntos.
+  if (a.estela.length < 3) {
+    const puntos = a.puntos;
+    a.estela = [
+      L.polyline([], { color: a.color, weight: 2, opacity: 0.35, dashArray: '1 7' }).addTo(map),
+      L.polyline([], { color: a.color, weight: 2.5, opacity: 0.7, dashArray: '1 7' }).addTo(map),
+      L.polyline([], { color: a.color, weight: 3.5, opacity: 1, dashArray: '1 7' }).addTo(map),
+    ];
+    setEstela(a.estela, puntos);
+  }
+
+  if (a.cuentaCupo) {
+    a.cuentaCupo = false;
+    enemigosAnimados = Math.max(0, enemigosAnimados - 1);
+  }
+
+  a.tier = 'full';
+  a.marcador?.getElement()?.classList.toggle('amenaza', true);
+  if (!prefersReducedMotion()) arrancarBucle();
+}
+
 function crearAnimacion(shotId, shot, origen, amenaza) {
   const esPreview = shotId === 'preview';
   const esEnemigo = !origen && !esPreview;
+  // Niveles de detalle para no saturar la visualización con muchos disparos:
+  //   full    -> propios, amenazas y preview: animación completa con ETA y ping.
+  //   reduced -> ajenos no-amenaza (cupo limitado): animados pero sin ETA ni ping.
+  //   static  -> ajenos no-amenaza sobre el cupo: solo línea + círculo, sin frame.
+  const detallado = esPreview || !esEnemigo || amenaza;
+  const reducido = !detallado && enemigosAnimados < MAX_ENEMIGOS_ANIMADOS;
+  const estatico = !detallado && !reducido;
+  const cuentaCupo = reducido && !shot.resolved;
+  if (cuentaCupo) enemigosAnimados++;
+
   const destino = [shot.destLat, shot.destLng];
   const origenDef = origen ? [origen.lat, origen.lng] : puntoAproximacion(destino, shotId);
   const color = esPreview ? COLOR_PREVIEW : esEnemigo ? COLOR_ENEMIGO : COLOR_PROPIO;
 
-  const marcador = L.marker(origenDef, {
-    icon: L.divIcon({
-      className: `missile-icon${esEnemigo ? ' enemy' : ''}${esPreview ? ' preview' : ''}`,
-      html: '<div class="missile-wrap"><svg viewBox="0 0 24 24" class="missile-svg"><path d="M12 2 L21 22 L12 17.5 L3 22 Z"/></svg></div>',
-      iconSize: [20, 20], iconAnchor: [10, 10],
-    }),
-    interactive: false, keyboard: false,
-  }).addTo(map);
-  const wrap = marcador.getElement().querySelector('.missile-wrap');
+  const marcador = estatico
+    ? null
+    : L.marker(origenDef, {
+        icon: L.divIcon({
+          className: `missile-icon${esEnemigo ? ' enemy' : ''}${esPreview ? ' preview' : ''}`,
+          html: '<div class="missile-wrap"><svg viewBox="0 0 24 24" class="missile-svg"><path d="M12 2 L21 22 L12 17.5 L3 22 Z"/></svg></div>',
+          iconSize: [20, 20], iconAnchor: [10, 10],
+        }),
+        interactive: false, keyboard: false,
+      }).addTo(map);
+  const wrap = marcador?.getElement()?.querySelector('.missile-wrap');
 
-  const etaMarker = L.marker(origenDef, {
-    icon: L.divIcon({
-      className: 'eta-label-wrap',
-      html: '<span class="eta-label mono">--:--</span>',
-      iconSize: [0, 0],
-    }),
-    interactive: false, keyboard: false,
-  }).addTo(map);
-  const etaEl = etaMarker.getElement().querySelector('.eta-label');
+  const etaMarker = detallado
+    ? L.marker(origenDef, {
+        icon: L.divIcon({
+          className: 'eta-label-wrap',
+          html: '<span class="eta-label mono">--:--</span>',
+          iconSize: [0, 0],
+        }),
+        interactive: false, keyboard: false,
+      }).addTo(map)
+    : null;
+  const etaEl = etaMarker?.getElement()?.querySelector('.eta-label');
 
-  const estela = [
-    L.polyline([], { color, weight: 2, opacity: 0.35, dashArray: '1 7' }),
-    L.polyline([], { color, weight: 2.5, opacity: 0.7, dashArray: '1 7' }),
-    L.polyline([], { color, weight: 3.5, opacity: 1, dashArray: '1 7' }),
-  ].map((p) => p.addTo(map));
+  const estela = [];
+  if (detallado) {
+    estela.push(L.polyline([], { color, weight: 2, opacity: 0.35, dashArray: '1 7' }).addTo(map));
+    estela.push(L.polyline([], { color, weight: 2.5, opacity: 0.7, dashArray: '1 7' }).addTo(map));
+    estela.push(L.polyline([], { color, weight: 3.5, opacity: 1, dashArray: '1 7' }).addTo(map));
+  } else if (reducido) {
+    estela.push(L.polyline([], { color, weight: 2.5, opacity: 0.7, dashArray: '1 7' }).addTo(map));
+  }
 
   const ruta = L.polyline([origenDef, destino], {
     color, weight: 1, opacity: 0.35, dashArray: '2 8', interactive: false,
@@ -301,14 +444,16 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
   }).addTo(map);
   impactMarker.getElement().style.color = color;
 
-  const ping = L.marker(destino, {
-    icon: L.divIcon({
-      className: 'radar-ping',
-      html: `<div class="radar-ping-ring" style="border-color:${color}"></div>`,
-      iconSize: [0, 0],
-    }),
-    interactive: false, keyboard: false,
-  }).addTo(map);
+  const ping = detallado
+    ? L.marker(destino, {
+        icon: L.divIcon({
+          className: 'radar-ping',
+          html: `<div class="radar-ping-ring" style="border-color:${color}"></div>`,
+          iconSize: [0, 0],
+        }),
+        interactive: false, keyboard: false,
+      }).addTo(map)
+    : null;
 
   const a = {
     shotId, shot, destino,
@@ -319,6 +464,9 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     amenaza: amenaza && !shot.resolved,
     recortarRuta: esEnemigo,
     contramedida: false,
+    tier: detallado ? 'full' : reducido ? 'reduced' : 'static',
+    estatico,
+    cuentaCupo,
   };
 
   if (a.estado === 'impactado') {
@@ -326,14 +474,16 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     a.circulo.setStyle({ color, weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
     quitarCapasAnimacion(a);
   } else if (prefersReducedMotion()) {
-    const t = progreso(a);
-    const pos = interpolar(a, t);
-    a.marcador.setLatLng(pos);
-    a.etaMarker.setLatLng(pos);
-    a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - Date.now()));
-    actualizarRuta(a, pos);
+    if (a.marcador) {
+      const t = progreso(a);
+      const pos = interpolar(a, t);
+      a.marcador.setLatLng(pos);
+      if (a.etaMarker) a.etaMarker.setLatLng(pos);
+      if (a.etaEl) a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - Date.now()));
+      actualizarRuta(a, pos);
+    }
   } else {
-    marcador.getElement().classList.toggle('amenaza', a.amenaza);
+    a.marcador?.getElement()?.classList.toggle('amenaza', a.amenaza);
   }
 
   return a;
@@ -357,7 +507,7 @@ function arrancarBucle() {
     ultimo = t;
     let activos = 0;
     for (const a of animaciones.values()) {
-      if (a.estado !== 'vuelo') continue;
+      if (a.estado !== 'vuelo' || a.estatico) continue;
       activos++;
       actualizarFrame(a);
     }
@@ -385,7 +535,6 @@ function actualizarFrame(a) {
   if (a.marcador) a.marcador.setLatLng(pos);
   if (a.etaMarker) a.etaMarker.setLatLng(pos);
   rotarMarcador(a, pos);
-  if (a.etaEl) a.etaEl.textContent = formatMMSS(Math.max(0, shot.impactAt - Date.now()));
   actualizarRuta(a, pos);
   añadirPuntoEstela(a, pos);
   if (seguirShotId === a.shotId && a.estado === 'vuelo') map.panTo(pos, { animate: false });
@@ -465,10 +614,11 @@ function añadirPuntoEstela(a, pos) {
 }
 
 function setEstela(estela, puntos) {
+  if (!estela[0]) return;
   estela[0].setLatLngs(puntos);
   const n = puntos.length;
-  estela[1].setLatLngs(n ? puntos.slice(Math.floor(n * 0.5)) : []);
-  estela[2].setLatLngs(n ? puntos.slice(-2) : []);
+  if (estela[1]) estela[1].setLatLngs(n ? puntos.slice(Math.floor(n * 0.5)) : []);
+  if (estela[2]) estela[2].setLatLngs(n ? puntos.slice(-2) : []);
 }
 
 function easeOutCubic(p) {
