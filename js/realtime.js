@@ -76,9 +76,11 @@ export function suscribirseAJugadorPropio(playerId, callback) {
 }
 
 // ---------- Bots (sí se muestran en el mapa, no son personas) ----------
-
-export function suscribirseATodosJugadores(callback) {
-  return onValue(ref(db, 'players'), (snap) => callback(snap.val() || {}));
+// Viven en /players con isBot:true, pero el cliente NO puede leer la colección
+// players completa (rules). El Worker mantiene un espejo público en /bots con
+// solo lo visible (lat/lng/status/zoneCity), que sí es de lectura abierta.
+export function suscribirseABots(callback) {
+  return onValue(ref(db, 'bots'), (snap) => callback(snap.val() || {}));
 }
 
 // ---------- Disparos ----------

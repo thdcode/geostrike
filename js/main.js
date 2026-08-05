@@ -118,9 +118,9 @@ async function main() {
 
   // 4) Suscripciones en tiempo real
   RT.suscribirseAJugadorPropio(playerId, onCambioJugadorPropio);
-  RT.suscribirseATodosJugadores((players) => {
+  RT.suscribirseABots((players) => {
     const bots = Object.fromEntries(
-      Object.entries(players || {}).filter(([, p]) => p.isBot === true && p.status !== 'down')
+      Object.entries(players || {}).filter(([, p]) => p.status !== 'down')
     );
     Mapa.actualizarBots(bots);
   });
