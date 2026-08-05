@@ -358,7 +358,7 @@ function onCambioDisparos(shots) {
 
     // --- Disparo entrante INTERCEPTADO por alguien (o el mío, anulado). ---
     if (shot.intercepted) {
-      Mapa.marcarInterceptado(shotId);
+      Mapa.marcarInterceptado(shotId, shot.interceptedAt);
       if (!disparosInterceptadosMostrados.has(shotId)) {
         disparosInterceptadosMostrados.add(shotId);
         if (shot.shooterId === estadoJugador.playerId) {

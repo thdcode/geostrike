@@ -298,15 +298,18 @@ export function marcarInterceptor(shotId) {
   a.marcador?.getElement()?.classList?.add?.('interceptor');
 }
 
-/** Marca un disparo como interceptado (anulado): residuo gris, sin explosión. */
-export function marcarInterceptado(shotId) {
+/**
+ * Marca un disparo como interceptado y programa su explosión en pleno vuelo.
+ * @param {string} shotId
+ * @param {number} [interceptedAt] momento (ms) en que el interceptor llega:
+ *   en ese instante el misil estalla donde está (no llega a su destino) y
+ *   desaparece del mapa.
+ */
+export function marcarInterceptado(shotId, interceptedAt = null) {
   const a = animaciones.get(shotId);
   if (!a) return;
   a.interceptado = true;
-  a.circulo?.setStyle({ color: COLOR_ANULADO, weight: 2, dashArray: '4 4', fillOpacity: 0.08, opacity: 1 });
-  a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_ANULADO);
-  for (const p of a.estela) p?.setStyle({ color: COLOR_ANULADO });
-  a.ruta?.setStyle({ color: COLOR_ANULADO });
+  if (Number.isFinite(interceptedAt)) a.interceptadoAt = interceptedAt;
 }
 
 function aplicarColor(a, color, cls) {
@@ -604,6 +607,7 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
     contramedida: false,
     interceptor: esInterceptor,
     interceptado,
+    interceptadoAt: interceptado ? (shot.interceptedAt || 0) : 0,
     tier: detallado ? 'full' : reducido ? 'reduced' : 'static',
     estatico,
     cuentaCupo,
@@ -611,8 +615,15 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
   };
 
   if (interceptado) {
-    // El disparo ya estaba anulado cuando este cliente lo vio: residuo gris, sin explosión.
-    marcarInterceptado(shotId);
+    // Interceptado en pleno vuelo: si el instante de intercepción ya pasó
+    // (reload o resolución previa) se remata explotando ya; si no, la
+    // animación explota en vuelo cuando llegue ese instante (ver actualizarFrame).
+    a.interceptado = true;
+    a.interceptadoAt = Number.isFinite(a.interceptadoAt) ? a.interceptadoAt : Date.now();
+    if (shot.resolved || Date.now() >= a.interceptadoAt) {
+      const pos = interpolar(a, progreso(a));
+      explotarInterceptado(a, pos);
+    }
   } else if (a.estado === 'impactado') {
     // El disparo ya estaba resuelto cuando este cliente lo vio: solo residuo, sin explosión.
     a.circulo.setStyle({ color, weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
@@ -665,8 +676,13 @@ function actualizarFrame(a) {
 
   if (shot.resolved && a.estado !== 'impactado') {
     a.estado = 'impactado';
-    if (a.interceptado || shot.cancelled || shot.intercepted) {
-      // Interceptado o anulado: sin explosión, solo residuo gris.
+    if (a.interceptado || shot.intercepted) {
+      // Interceptado: estalla donde está (no llega a su destino) y desaparece.
+      explotarInterceptado(a, interpolar(a, progreso(a)));
+      return;
+    }
+    if (shot.cancelled) {
+      // Anulado por otra causa (jugador finalizó, etc.): solo residuo gris.
       marcarAnulado(a);
       return;
     }
@@ -678,6 +694,13 @@ function actualizarFrame(a) {
     return;
   }
   if (a.estado !== 'vuelo') return;
+
+  // Interceptado en vuelo: cuando llega el interceptor, estalla en pleno vuelo.
+  if (a.interceptado && a.interceptadoAt && Date.now() >= a.interceptadoAt) {
+    a.estado = 'impactado';
+    explotarInterceptado(a, interpolar(a, progreso(a)));
+    return;
+  }
 
   const t = progreso(a);
   const pos = interpolar(a, t);
@@ -726,6 +749,44 @@ function marcarAnulado(a) {
   a.circulo?.setStyle({ color: COLOR_ANULADO, weight: 2, dashArray: '4 4', fillOpacity: 0.08, opacity: 1 });
   a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_ANULADO);
   quitarCapasAnimacion(a);
+}
+
+/**
+ * Explosión de un disparo interceptado EN PLENO VUELO (no llega a su destino).
+ * Estalla en la posición indicada y desaparece del mapa por completo.
+ */
+function explotarInterceptado(a, pos) {
+  const [dlat, dlng] = pos;
+
+  if (!prefersReducedMotion()) {
+    const flash = L.marker([dlat, dlng], {
+      icon: L.divIcon({
+        className: 'impact-flash intercept-flash',
+        html: '<div class="impact-flash-ring"></div>',
+        iconSize: [140, 140], iconAnchor: [70, 70],
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+    setTimeout(() => map.removeLayer(flash), 950);
+
+    let ring = L.circle([dlat, dlng], { radius: 0, color: COLOR_ANULADO, weight: 2, opacity: 0.9 });
+    ring.addTo(map);
+    const inicio = Date.now();
+    const DURACION = 800;
+    const MAX_RADIO = 180_000; // 180 km
+    const iv = setInterval(() => {
+      const p = Math.min(1, (Date.now() - inicio) / DURACION);
+      ring.setRadius(MAX_RADIO * easeOutCubic(p));
+      ring.setStyle({ opacity: 0.9 * (1 - p) });
+      if (p >= 1) { clearInterval(iv); map.removeLayer(ring); ring = null; }
+    }, 16);
+  }
+
+  // Desaparece por completo: sin residuo en el destino.
+  marcarAnulado(a);
+  for (const key of ['circulo', 'impactMarker']) {
+    if (a[key]) { map.removeLayer(a[key]); a[key] = null; }
+  }
 }
 
 function colorDe(a) {

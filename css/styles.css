@@ -109,6 +109,11 @@ html, body {
   100% { transform: scale(1.4); opacity: 0; }
 }
 
+/* Explosión de intercepción en pleno vuelo: tinte cian para distinguirla. */
+.intercept-flash .impact-flash-ring {
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(127,227,255,0.6) 30%, rgba(127,227,255,0) 70%);
+}
+
 /* ================= HUD superior ================= */
 .hud-top {
   position: fixed; top: 0; left: 0; right: 0; z-index: 20;
