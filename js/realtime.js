@@ -23,10 +23,25 @@ export async function obtenerSesion(deviceId) {
 }
 
 /** Crea o actualiza la sesión activa de este dispositivo para el nickname dado. */
-export function crearSesion(deviceId, playerId, nickname) {
+export function crearSesion(deviceId, playerId, nickname, puntosBase = 0) {
   return set(ref(db, `sessions/${deviceId}`), {
-    playerId, nickname, active: true, createdAt: Date.now(),
+    playerId, nickname, active: true, createdAt: Date.now(), puntosBase,
   });
+}
+
+/**
+ * Puntos actuales del jugador en el ranking global. Se usan como línea base al
+ * iniciar una partida: el HUD muestra la puntuación de la partida (global − base),
+ * sin tocar el ranking global persistente.
+ */
+export async function obtenerPuntosRanking(nickname) {
+  const snap = await get(ref(db, `ranking/${sanitizeKey(nickname)}/points`));
+  return snap.exists() ? snap.val() : 0;
+}
+
+// Misma sanitización de claves de ranking que el Worker (Firebase prohíbe . # $ [ ]).
+export function sanitizeKey(nickname) {
+  return encodeURIComponent((nickname || '').replace(/[.#$[\]]/g, '_'));
 }
 
 /** Marca la sesión como finalizada (el jugador decidió empezar de cero la próxima vez). */

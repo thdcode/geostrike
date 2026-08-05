@@ -26,6 +26,7 @@ let nombreEquipoActual = null;
 let jugadorEliminado = false;
 let misPuntos = 0;
 let miDañoMitigado = 0;
+let puntosBasePartida = 0; // ranking.points al iniciar la partida; el HUD muestra la diferencia
 let hpAnterior = 100;
 const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
 const contramedidasLanzadas = new Set(); // shotIds en los que ya lancé una contramedida
@@ -122,9 +123,10 @@ async function main() {
   RT.suscribirseAContramedidas(onCambioContramedidas);
   Ranking.observarRanking((filas) => {
     Ranking.renderizarRanking(filas);
-    const miKey = sanitizeKey(estadoJugador.nickname);
+    const miKey = RT.sanitizeKey(estadoJugador.nickname);
     const miFila = filas.find((f) => f.nickname === miKey);
-    misPuntos = miFila?.points || 0;
+    // Puntuación de la PARTIDA actual: parte de 0 al iniciar y solo suma lo ganado.
+    misPuntos = Math.max(0, (miFila?.points || 0) - puntosBasePartida);
     miDañoMitigado = miFila?.mitigatedDamage || 0;
     renderHUD(nombreEquipoActual);
   });
@@ -153,14 +155,19 @@ async function resolverPartidaActiva() {
   // Migración: identidad antigua (playerId guardado en localStorage) sin sesión aún.
   const legacy = leerPlayerIdLegacy();
   if (!sesion && legacy) {
-    await RT.crearSesion(deviceId, legacy, estadoJugador.nickname);
+    puntosBasePartida = await RT.obtenerPuntosRanking(estadoJugador.nickname);
+    await RT.crearSesion(deviceId, legacy, estadoJugador.nickname, puntosBasePartida);
     return legacy;
   }
 
   if (sesion && sesion.active && sesion.nickname === estadoJugador.nickname) {
     const decision = await UI.preguntarRecuperacion(estadoJugador.nickname);
     if (decision === 'recuperar') {
-      await RT.crearSesion(deviceId, sesion.playerId, estadoJugador.nickname);
+      // Si la sesión es de antes de esta función, la línea base se toma ahora.
+      puntosBasePartida = Number.isFinite(sesion.puntosBase)
+        ? sesion.puntosBase
+        : await RT.obtenerPuntosRanking(estadoJugador.nickname);
+      await RT.crearSesion(deviceId, sesion.playerId, estadoJugador.nickname, puntosBasePartida);
       return sesion.playerId;
     }
     // "nueva": finaliza la activa y sigue para crear una partida nueva.
@@ -168,7 +175,8 @@ async function resolverPartidaActiva() {
   }
 
   const playerId = crypto.randomUUID();
-  await RT.crearSesion(deviceId, playerId, estadoJugador.nickname);
+  puntosBasePartida = await RT.obtenerPuntosRanking(estadoJugador.nickname);
+  await RT.crearSesion(deviceId, playerId, estadoJugador.nickname, puntosBasePartida);
   return playerId;
 }
 
@@ -256,11 +264,6 @@ function renderHUD(teamName) {
     puntos: misPuntos,
     mitigatedDamage: miDañoMitigado,
   });
-}
-
-// Misma sanitización de claves de ranking que el Worker (Firebase prohíbe . # $ [ ]).
-function sanitizeKey(nickname) {
-  return encodeURIComponent((nickname || '').replace(/[.#$[\]]/g, '_'));
 }
 
 // Relojes de cuenta atrás: HUD, banners de amenaza y etiquetas ETA del mapa se
