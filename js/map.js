@@ -42,6 +42,7 @@ export function inicializarMapa(lat, lng) {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 18,
+    noWrap: true, // una única copia del mundo, sin repetición lateral al alejar
   }).addTo(map);
 
   return map;
