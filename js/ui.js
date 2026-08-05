@@ -49,15 +49,19 @@ export function mostrarToast(mensaje, tipo = 'info') {
   }, 5000);
 }
 
+/**
+ * Muestra el toast del resultado de un impacto y devuelve la entrada de
+ * actividad correspondiente { texto, tipo, destino } (o null si es "sin
+ * impacto"), para que main.js la renderice y la persista en un único punto.
+ */
 export function mostrarResultadoImpacto({ hits, totalPoints }, destino = null) {
   if (!hits || hits.length === 0) {
     mostrarToast('Sin impactos — nadie estaba en el radio de 50 km.', 'info');
-    anadirActividad('🎯 Disparo resuelto sin impacto.', 'info', destino);
-    return;
+    return { texto: '🎯 Disparo resuelto sin impacto.', tipo: 'info', destino };
   }
   const detalle = hits.map((h) => `${h.nickname} (+${h.points})`).join(', ');
   mostrarToast(`¡Impacto! ${detalle} · Total: +${totalPoints} puntos`, 'success');
-  anadirActividad(`🎯 ¡Impacto! ${detalle} · Total +${totalPoints}.`, 'hit', destino);
+  return { texto: `🎯 ¡Impacto! ${detalle} · Total +${totalPoints}.`, tipo: 'hit', destino };
 }
 
 // ---------- Panel de actividad ----------
@@ -105,7 +109,6 @@ export function anadirActividad(texto, tipo = 'info', destino = null) {
     el.classList.add('clicable');
   }
   list.prepend(el);
-  while (list.children.length > 50) list.lastElementChild.remove();
 }
 
 export function limpiarActividad() {

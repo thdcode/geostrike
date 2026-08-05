@@ -1,7 +1,7 @@
 // main.js — orquesta la carga inicial y el bucle de juego.
 // Lee esto de arriba a abajo como el mapa mental de todo el cliente.
 
-import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM, SPLASH_RADIUS_KM } from './config.js';
+import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM, SPLASH_RADIUS_KM, IMPACTO_VISIBLE_MS } from './config.js';
 import { obtenerUbicacion, seleccionarUbicacionManual } from './geolocation.js';
 import { cifrarUbicacion, cachearUbicacionLocal, leerUbicacionCacheada } from './crypto.js';
 import { obtenerIdentidadDispositivo, guardarNickname, leerPlayerIdLegacy, estadoJugador } from './player.js';
@@ -30,6 +30,40 @@ let hpAnterior = 100;
 const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
 const contramedidasLanzadas = new Set(); // shotIds en los que ya lancé una contramedida
 const misDisparosContracados = new Set(); // shotIds (disparos MÍOS) contra los que el enemigo lanzó contramedida
+let actividadPersiste = false; // true a partir de que el historial cargado; evita re-persistir entradas del load
+
+// Renderiza un evento en el panel de actividad y, si lleva coordenadas, lo
+// persiste en el historial de la partida en curso (fire-and-forget).
+function registrarActividad(texto, tipo, destino = null) {
+  UI.anadirActividad(texto, tipo, destino);
+  if (!actividadPersiste || !destino) return;
+  if (!Number.isFinite(destino.lat) || !Number.isFinite(destino.lng)) return;
+  RT.guardarEventoActividad(estadoJugador.playerId, {
+    tipo, texto,
+    lat: destino.lat, lng: destino.lng,
+    shotId: destino.shotId || null,
+    ts: Date.now(),
+  }).catch(() => {});
+}
+
+async function cargarActividadPersistida() {
+  try {
+    const eventos = await RT.obtenerActividad(estadoJugador.playerId);
+    if (!eventos.length) return;
+    const ordenados = eventos
+      .filter((e) => e && e.texto)
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    for (const e of ordenados) {
+      UI.anadirActividad(
+        e.texto,
+        e.tipo || 'info',
+        Number.isFinite(e.lat) && Number.isFinite(e.lng) ? { lat: e.lat, lng: e.lng, shotId: e.shotId || null } : null
+      );
+    }
+  } catch (err) {
+    console.warn('No se pudo cargar el historial de actividad:', err);
+  }
+}
 
 async function main() {
   const identidad = obtenerIdentidadDispositivo();
@@ -43,6 +77,11 @@ async function main() {
   // 0) Recuperar o crear la partida activa (verificación: dispositivo + nickname, sin email)
   const playerId = await resolverPartidaActiva();
   estadoJugador.playerId = playerId;
+
+  // Historial de actividad de la partida en curso (si el usuario recupera su
+  // partida, vuelve a verlo; si es nueva, empieza vacío).
+  await cargarActividadPersistida();
+  actividadPersiste = true;
 
   // 1) Mapa con vista provisional mientras resolvemos la ubicación real
   Mapa.inicializarMapa(20, 0);
@@ -181,7 +220,7 @@ function onCambioJugadorPropio(data) {
       if (ahora - v.ts < 20_000 && (!ultimo || v.ts > ultimo.ts)) ultimo = v;
     }
     if (ultimo) impactosCercanos.clear();
-    UI.anadirActividad(
+    registrarActividad(
       ultimo && ultimo.nickname
         ? `💥 Impacto recibido de ${ultimo.nickname} · −${dañoRecibido} vida`
         : `💥 Has recibido ${dañoRecibido} de daño`,
@@ -264,23 +303,32 @@ function onCambioDisparos(shots) {
     const origen = shot.shooterId === estadoJugador.playerId ? miUbicacion : null;
     const amenaza = !shot.resolved && miUbicacion &&
       haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= WARNING_RADIUS_KM;
-    Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
+    // Impactos resueltos hace más de IMPACTO_VISIBLE_MS no se visualizan en el
+    // mapa (el historial sigue en el panel de actividad, con sus coordenadas).
+    const impactoViejo = shot.resolved && (Date.now() - (shot.impactAt || 0)) > IMPACTO_VISIBLE_MS;
+    if (impactoViejo) {
+      Mapa.limpiarDisparo(shotId);
+    } else {
+      Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
 
-    // Reaplica el color de contramedida si la animación se recreó.
-    if (contramedidasLanzadas.has(shotId)) Mapa.marcarContramedida(shotId);
-    if (misDisparosContracados.has(shotId)) Mapa.marcarContracada(shotId);
+      // Reaplica el color de contramedida si la animación se recreó.
+      if (contramedidasLanzadas.has(shotId)) Mapa.marcarContramedida(shotId);
+      if (misDisparosContracados.has(shotId)) Mapa.marcarContracada(shotId);
+    }
 
     // Disparo ajeno resuelto dentro de mi radio de salpicadura: se recuerda
-    // para atribuir el daño que detectemos en onCambioJugadorPropio.
-    if (shot.resolved && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
+    // para atribuir el daño que detectemos en onCambioJugadorPropio. Solo se
+    // tienen en cuenta impactos recientes (nunca uno viejo de la BD).
+    if (shot.resolved && !impactoViejo && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
         haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= SPLASH_RADIUS_KM) {
       impactosCercanos.set(shotId, { shotId, nickname: shot.shooterNickname, ts: Date.now(), lat: shot.destLat, lng: shot.destLng });
     }
 
-    if (shot.resolved && shot.result && shot.shooterId === estadoJugador.playerId) {
+    if (shot.resolved && shot.result && shot.shooterId === estadoJugador.playerId && !impactoViejo) {
       if (!shotsYaResueltosMostrados.has(shotId)) {
         shotsYaResueltosMostrados.add(shotId);
-        UI.mostrarResultadoImpacto(shot.result, { lat: shot.destLat, lng: shot.destLng, shotId });
+        const entrada = UI.mostrarResultadoImpacto(shot.result, { lat: shot.destLat, lng: shot.destLng, shotId });
+        if (entrada) registrarActividad(entrada.texto, entrada.tipo, entrada.destino);
       }
     }
 
@@ -402,7 +450,7 @@ async function confirmarDisparo() {
   Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
   cancelarApuntado();
-  UI.anadirActividad(
+  registrarActividad(
     `🚀 Disparo lanzado · destino a ${Math.round(distanciaKm).toLocaleString('es-ES')} km · impacto en ${formatMMSS(flightMs)}`,
     'shot',
     { lat: destinoLanzado.lat, lng: destinoLanzado.lng, shotId }

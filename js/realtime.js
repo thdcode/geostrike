@@ -148,6 +148,19 @@ export function suscribirseAContramedidas(callback) {
   return onValue(ref(db, 'countermeasures'), (snap) => callback(snap.val() || {}));
 }
 
+// ---------- Actividad persistente de la partida ----------
+
+/** Guarda un evento del panel de actividad bajo el playerId de la partida en curso. */
+export async function guardarEventoActividad(playerId, evento) {
+  await push(ref(db, `activity/${playerId}`), evento);
+}
+
+/** Devuelve el historial persistido de la partida (array de eventos con ts/tipo/texto/coordenadas). */
+export async function obtenerActividad(playerId) {
+  const snap = await get(ref(db, `activity/${playerId}`));
+  return snap.exists() ? Object.values(snap.val()) : [];
+}
+
 // ---------- Ranking ----------
 
 export function suscribirseARanking(callback) {

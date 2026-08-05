@@ -28,6 +28,7 @@ export const SPLASH_RADIUS_KM = 50;
 export const WARNING_RADIUS_KM = 200;
 export const SHOT_COOLDOWN_MS = 30_000; // 30s entre disparos propios
 export const COUNTERMEASURE_COOLDOWN_MS = 90_000; // 1,5 min
+export const IMPACTO_VISIBLE_MS = 5 * 60_000; // impactos resueltos de más de 5 min no se dibujan en el mapa
 
 export const MIN_FLIGHT_MS = 60_000; // 1 minuto
 export const MAX_FLIGHT_MS = 600_000; // 10 minutos
