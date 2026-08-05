@@ -100,7 +100,7 @@ export async function crearDisparo(shooterId, shooterNickname, destLat, destLng,
     if (data.eliminated) err.eliminated = true;
     throw err;
   }
-  return data.shotId;
+  return data;
 }
 
 /** Pide al Worker que anule los disparos en vuelo del jugador al finalizar la partida. */
