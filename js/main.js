@@ -10,6 +10,7 @@ import * as Mapa from './map.js';
 import { haversineKm, calcularFlightMs, formatMMSS } from './physics.js';
 import * as Teams from './teams.js';
 import * as Counter from './countermeasures.js';
+import * as Interceptor from './interceptors.js';
 import * as Push from './push.js';
 import * as Ranking from './ranking.js';
 import * as UI from './ui.js';
@@ -31,6 +32,10 @@ let hpAnterior = 100;
 const impactosCercanos = new Map(); // shotId -> { nickname, ts } de disparos ajenos resueltos en mi radio
 const contramedidasLanzadas = new Set(); // shotIds en los que ya lancé una contramedida
 const misDisparosContracados = new Set(); // shotIds (disparos MÍOS) contra los que el enemigo lanzó contramedida
+const interceptoresEnProcesoDeResolucion = new Set(); // interceptores cuyo resolve ya se pidió
+const interceptoresResueltosMostrados = new Set();    // interceptores propios cuyo veredicto ya se mostró
+const disparosInterceptadosMostrados = new Set();     // objetivos interceptados ya avisados
+let interceptorEnVueloId = null;                      // interceptorId propio actualmente en vuelo
 let actividadPersiste = false; // true a partir de que el historial cargado; evita re-persistir entradas del load
 
 // Renderiza un evento en el panel de actividad y, si lleva coordenadas, lo
@@ -261,6 +266,7 @@ function renderHUD(teamName) {
     teamName,
     nextShotAvailableAt: estadoJugador.nextShotAvailableAt,
     nextCounterAvailableAt: estadoJugador.nextCounterAvailableAt,
+    interceptorInFlight: estadoJugador.interceptorInFlight || (interceptorEnVueloId ? { until: Date.now() + 60_000 } : null),
     puntos: misPuntos,
     mitigatedDamage: miDañoMitigado,
   });
@@ -324,10 +330,48 @@ function onCambioDisparos(shots) {
       if (misDisparosContracados.has(shotId)) Mapa.marcarContracada(shotId);
     }
 
+    // --- Interceptor PROPIO: se pinta distinto y se muestra el veredicto. ---
+    if (shot.type === 'interceptor' && shot.shooterId === estadoJugador.playerId) {
+      if (!shot.resolved) {
+        interceptorEnVueloId = shotId;
+        Mapa.marcarInterceptor(shotId);
+      } else if (!interceptoresResueltosMostrados.has(shotId)) {
+        interceptoresResueltosMostrados.add(shotId);
+        if (interceptorEnVueloId === shotId) interceptorEnVueloId = null;
+        const pct = Math.round((shot.hitProbability || 0) * 100);
+        const ok = shot.outcome === 'hit';
+        UI.mostrarToast(
+          ok
+            ? `🚀 Interceptor acertó (${pct}%) — el disparo entrante fue destruido.`
+            : `Interceptor falló (${pct}%). El disparo entrante seguirá su curso.`,
+          ok ? 'success' : 'info'
+        );
+        registrarActividad(
+          ok
+            ? `🚀 Interceptor destruyó un disparo entrante (acierto ${pct}%).`
+            : `Interceptor falló (${pct}%).`,
+          ok ? 'shot' : 'info',
+          { lat: shot.destLat, lng: shot.destLng, shotId: shot.targetShotId || shotId }
+        );
+      }
+    }
+
+    // --- Disparo entrante INTERCEPTADO por alguien (o el mío, anulado). ---
+    if (shot.intercepted) {
+      Mapa.marcarInterceptado(shotId);
+      if (!disparosInterceptadosMostrados.has(shotId)) {
+        disparosInterceptadosMostrados.add(shotId);
+        if (shot.shooterId === estadoJugador.playerId) {
+          UI.mostrarToast('🚫 Tu disparo fue interceptado por el enemigo.', 'error');
+          registrarActividad('🚫 Tu disparo fue interceptado por el enemigo.', 'info', { lat: shot.destLat, lng: shot.destLng, shotId });
+        }
+      }
+    }
+
     // Disparo ajeno resuelto dentro de mi radio de salpicadura: se recuerda
     // para atribuir el daño que detectemos en onCambioJugadorPropio. Solo se
     // tienen en cuenta impactos recientes (nunca uno viejo de la BD).
-    if (shot.resolved && !impactoViejo && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
+    if (shot.resolved && !impactoViejo && !shot.intercepted && shot.shooterId !== estadoJugador.playerId && miUbicacion &&
         haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= SPLASH_RADIUS_KM) {
       impactosCercanos.set(shotId, { shotId, nickname: shot.shooterNickname, ts: Date.now(), lat: shot.destLat, lng: shot.destLng });
     }
@@ -355,9 +399,21 @@ function tick() {
 
   // a) ¿Algún disparo (mío o de otro) ya debería resolverse y nadie lo ha hecho?
   for (const [shotId, shot] of Object.entries(ultimoSnapshotDisparos)) {
+    if (shot.type === 'interceptor') continue; // los interceptores se resuelven con /resolve-interceptor
     if (!shot.resolved && shot.impactAt <= ahora && !shotsEnProcesoDeResolucion.has(shotId)) {
       shotsEnProcesoDeResolucion.add(shotId);
       resolverImpacto(shotId).finally(() => shotsEnProcesoDeResolucion.delete(shotId));
+    }
+  }
+
+  // a') ¿Algún interceptor propio ya debería resolverse?
+  for (const [shotId, shot] of Object.entries(ultimoSnapshotDisparos)) {
+    if (shot.type !== 'interceptor') continue;
+    if (!shot.resolved && shot.impactAt <= ahora && !interceptoresEnProcesoDeResolucion.has(shotId)) {
+      interceptoresEnProcesoDeResolucion.add(shotId);
+      RT.resolverInterceptor(shotId)
+        .catch(() => {}) // se reintentará en el siguiente tick
+        .finally(() => interceptoresEnProcesoDeResolucion.delete(shotId));
     }
   }
 
@@ -370,9 +426,13 @@ function tick() {
       amenaza.distanciaKm,
       restante,
       lanzarContramedidaDesdeUI,
-      () => Mapa.seguirDisparo(amenaza.shotId)
+      () => Mapa.seguirDisparo(amenaza.shotId),
+      lanzarInterceptorDesdeUI
     );
   }
+  // Deshabilita el botón de interceptar de los banners mientras ya haya un
+  // interceptor en vuelo (se reactivan cuando se libera el slot).
+  UI.sincronizarBotonesInterceptores(Interceptor.hayInterceptorEnVuelo());
 }
 
 async function resolverImpacto(shotId) {
@@ -395,6 +455,28 @@ async function lanzarContramedidaDesdeUI(shotId) {
     Mapa.marcarContramedida(shotId);
     UI.mostrarToast('Contramedida lanzada — protege a tu equipo en este disparo.', 'success');
   } catch (err) {
+    UI.mostrarToast(err.message, 'error');
+  }
+}
+
+async function lanzarInterceptorDesdeUI(targetShotId) {
+  try {
+    const res = await Interceptor.lanzar(targetShotId);
+    UI.marcarBannerInterceptado(targetShotId);
+    UI.sincronizarBotonesInterceptores(true);
+    const destino = ultimoSnapshotDisparos?.[targetShotId];
+    const pct = Math.round((res.hitProbability || 0) * 100);
+    UI.mostrarToast(`🚀 Interceptor lanzado (precisión ${pct}%).`, 'success');
+    registrarActividad(
+      `🚀 Interceptor lanzado contra disparo entrante (precisión ${pct}%).`,
+      'shot',
+      destino ? { lat: destino.destLat, lng: destino.destLng, shotId: targetShotId } : null
+    );
+  } catch (err) {
+    if (err.eliminated) {
+      await manejarEliminacion();
+      return;
+    }
     UI.mostrarToast(err.message, 'error');
   }
 }

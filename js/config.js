@@ -30,6 +30,11 @@ export const SHOT_COOLDOWN_MS = 30_000; // 30s entre disparos propios
 export const COUNTERMEASURE_COOLDOWN_MS = 90_000; // 1,5 min
 export const IMPACTO_VISIBLE_MS = 5 * 60_000; // impactos resueltos de más de 5 min no se dibujan en el mapa
 
+// --- Disparo interceptor (mirror de balance.js del Worker) ---
+export const MAX_INTERCEPTORS_IN_FLIGHT = 1; // solo un interceptor en vuelo por jugador
+export const INTERCEPT_MAX_ACCURACY_WINDOW_MS = 150_000; // ≤ este margen → probabilidad ≈ máxima
+export const INTERCEPT_MIN_ACCURACY = 0.05; // piso de probabilidad de acierto
+
 export const MIN_FLIGHT_MS = 60_000; // 1 minuto
 export const MAX_FLIGHT_MS = 600_000; // 10 minutos
 export const MAX_DISTANCE_KM = 20_000; // ~media circunferencia terrestre

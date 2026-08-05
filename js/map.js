@@ -37,6 +37,8 @@ const COLOR_CONTRA = '#4FC3F7';      // celeste: disparo protegido con contramed
 const COLOR_CONTRA_RECIBIDA = '#9C6ADE'; // violeta: disparo TUYO que está siendo contrarrestado
 const COLOR_RESULTADO_HIT = '#2CF499';   // verde: disparo propio con impacto
 const COLOR_RESULTADO_MISS = '#7C8AA5';  // gris: disparo propio que falló
+const COLOR_INTERCEPTOR = '#7FE3FF';     // celeste claro: misil interceptor PROPIO
+const COLOR_ANULADO = '#9AA7BD';         // gris: disparo interceptado/anulado
 
 export function inicializarMapa(lat, lng) {
   // Una sola copia del mundo: sin worldCopyJump (evita que se repita al pane/zoom)
@@ -287,6 +289,26 @@ export function marcarContracada(shotId) {
   aplicarColor(a, COLOR_CONTRA_RECIBIDA, 'contracada');
 }
 
+/** Marca un disparo como INTERCEPTOR propio: color e icono distintivos. */
+export function marcarInterceptor(shotId) {
+  const a = animaciones.get(shotId);
+  if (!a) return;
+  a.interceptor = true;
+  if (!a.interceptado) aplicarColor(a, COLOR_INTERCEPTOR, 'interceptor');
+  a.marcador?.getElement()?.classList?.add?.('interceptor');
+}
+
+/** Marca un disparo como interceptado (anulado): residuo gris, sin explosión. */
+export function marcarInterceptado(shotId) {
+  const a = animaciones.get(shotId);
+  if (!a) return;
+  a.interceptado = true;
+  a.circulo?.setStyle({ color: COLOR_ANULADO, weight: 2, dashArray: '4 4', fillOpacity: 0.08, opacity: 1 });
+  a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_ANULADO);
+  for (const p of a.estela) p?.setStyle({ color: COLOR_ANULADO });
+  a.ruta?.setStyle({ color: COLOR_ANULADO });
+}
+
 function aplicarColor(a, color, cls) {
   const el = a.marcador?.getElement();
   if (el) {
@@ -508,7 +530,9 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
     : origenAjeno
       ? [origenAjeno.lat, origenAjeno.lng]
       : puntoAproximacion(destino, shotId);
-  const color = esPreview ? COLOR_PREVIEW : esEnemigo ? COLOR_ENEMIGO : COLOR_PROPIO;
+  const esInterceptor = shot?.type === 'interceptor';
+  const interceptado = !!shot?.intercepted;
+  const color = esPreview ? COLOR_PREVIEW : esEnemigo ? COLOR_ENEMIGO : esInterceptor ? COLOR_INTERCEPTOR : COLOR_PROPIO;
 
   const marcador = estatico
     ? null
@@ -578,13 +602,18 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
     amenaza: amenaza && !shot.resolved,
     recortarRuta: esEnemigo && !origenAjeno,
     contramedida: false,
+    interceptor: esInterceptor,
+    interceptado,
     tier: detallado ? 'full' : reducido ? 'reduced' : 'static',
     estatico,
     cuentaCupo,
     esPropio,
   };
 
-  if (a.estado === 'impactado') {
+  if (interceptado) {
+    // El disparo ya estaba anulado cuando este cliente lo vio: residuo gris, sin explosión.
+    marcarInterceptado(shotId);
+  } else if (a.estado === 'impactado') {
     // El disparo ya estaba resuelto cuando este cliente lo vio: solo residuo, sin explosión.
     a.circulo.setStyle({ color, weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
     quitarCapasAnimacion(a);
@@ -636,6 +665,11 @@ function actualizarFrame(a) {
 
   if (shot.resolved && a.estado !== 'impactado') {
     a.estado = 'impactado';
+    if (a.interceptado || shot.cancelled || shot.intercepted) {
+      // Interceptado o anulado: sin explosión, solo residuo gris.
+      marcarAnulado(a);
+      return;
+    }
     if (seguirShotId === a.shotId) {
       seguirShotId = null;
       map.panTo(a.destino, { animate: true });
@@ -684,6 +718,13 @@ function dispararExplosion(a) {
 
   // El círculo de salpicadura queda sólido como residuo del impacto.
   a.circulo.setStyle({ color: colorDe(a), weight: 2, dashArray: null, fillOpacity: 0.12, opacity: 1 });
+  quitarCapasAnimacion(a);
+}
+
+/** Resolución de un disparo interceptado/anulado: sin explosión, residuo gris. */
+function marcarAnulado(a) {
+  a.circulo?.setStyle({ color: COLOR_ANULADO, weight: 2, dashArray: '4 4', fillOpacity: 0.08, opacity: 1 });
+  a.impactMarker?.getElement()?.style?.setProperty('color', COLOR_ANULADO);
   quitarCapasAnimacion(a);
 }
 

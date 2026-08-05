@@ -18,6 +18,8 @@ export function disparosQueMeAmenazan(shots, miUbicacion) {
   const amenazas = [];
   for (const [shotId, shot] of Object.entries(shots || {})) {
     if (shot.resolved || shot.impactAt <= ahora) continue;
+    // Los interceptores no son amenazas entrantes (son defensas).
+    if (shot.type === 'interceptor') continue;
     // Un disparo entrante es de OTROS: un disparo propio nunca dispara el aviso,
     // por muy cerca que caiga. El destino sí puede estar a cualquier distancia
     // de origen (nunca se filtra por distancia de lanzamiento).

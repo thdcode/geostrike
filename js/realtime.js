@@ -117,6 +117,39 @@ export function suscribirseADisparos(callback) {
   return onValue(ref(db, 'shots'), (snap) => callback(snap.val() || {}));
 }
 
+// ---------- Disparos interceptores ----------
+
+/**
+ * Lanza un disparo interceptor contra un disparo entrante a través del Worker
+ * (POST /fire-interceptor). El Worker valida amenaza, uno-en-vuelo y tiempo.
+ */
+export async function lanzarInterceptor(playerId, targetShotId) {
+  const res = await fetch(`${WORKER_BASE_URL}/fire-interceptor`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerId, targetShotId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.interceptorId) {
+    const err = new Error(data.error || 'El Worker rechazó el interceptor');
+    if (data.eliminated) err.eliminated = true;
+    throw err;
+  }
+  return data;
+}
+
+/** Pide al Worker que finalice un interceptor cuyo impactAt ya pasó (se llama desde el tick). */
+export async function resolverInterceptor(interceptorId) {
+  const res = await fetch(`${WORKER_BASE_URL}/resolve-interceptor`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interceptorId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'No se pudo resolver el interceptor');
+  return data;
+}
+
 // ---------- Equipos (teamId == código de invitación, por simplicidad) ----------
 
 export async function crearEquipo(nombre, playerId) {

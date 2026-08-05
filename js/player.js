@@ -37,6 +37,7 @@ export const estadoJugador = {
   teamId: null,
   nextShotAvailableAt: 0,
   nextCounterAvailableAt: 0,
+  interceptorInFlight: null, // { interceptorId, until } mientras haya uno en vuelo
   lat: null,
   lng: null,
 };

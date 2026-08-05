@@ -4,7 +4,7 @@
 
 import { formatMMSS } from './physics.js';
 
-export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextCounterAvailableAt, puntos, mitigatedDamage }) {
+export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextCounterAvailableAt, interceptorInFlight, puntos, mitigatedDamage }) {
   const hpFill = document.getElementById('hp-fill');
   const hpLabel = document.getElementById('hp-label');
   if (hpFill) hpFill.style.width = `${Math.max(0, hp)}%`;
@@ -20,6 +20,22 @@ export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextC
 
   actualizarCooldown('shot-cooldown', nextShotAvailableAt);
   actualizarCooldown('counter-cooldown', nextCounterAvailableAt);
+  actualizarInterceptorStatus(interceptorInFlight);
+}
+
+function actualizarInterceptorStatus(inflight) {
+  const el = document.getElementById('interceptor-status');
+  if (!el) return;
+  const activo = inflight && Number.isFinite(inflight.until) && inflight.until > Date.now();
+  if (activo) {
+    el.textContent = '🛰 En vuelo';
+    el.classList.remove('ready');
+    el.classList.add('busy');
+  } else {
+    el.textContent = 'Listo';
+    el.classList.add('ready');
+    el.classList.remove('busy');
+  }
 }
 
 function actualizarCooldown(elementId, availableAt) {
@@ -121,7 +137,7 @@ export function alternarActividad(mostrar) {
   if (panel) panel.classList.toggle('hidden', !mostrar);
 }
 
-export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida, onSeguirDisparo = null) {
+export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida, onSeguirDisparo = null, onInterceptar = null) {
   const cont = document.getElementById('threat-banner-container');
   if (!cont) return;
   if (document.getElementById(`threat-${shotId}`)) return; // ya mostrado
@@ -132,9 +148,10 @@ export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarCo
   banner.dataset.shotId = shotId;
   banner.innerHTML = `
     <span class="threat-msg">⚠ Disparo entrante a ${Math.round(distanciaKm)} km — impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
-    <button class="btn-counter-inline">Lanzar contramedida</button>
+    <button class="btn-counter-inline btn-cnt-intercept">🚀 Interceptar</button>
+    <button class="btn-counter-inline btn-cnt-counter">Lanzar contramedida</button>
   `;
-  // Clic en el banner (fuera del botón) → sigue el disparo en el mapa.
+  // Clic en el banner (fuera de los botones) → sigue el disparo en el mapa.
   if (onSeguirDisparo) {
     banner.classList.add('clicable');
     banner.addEventListener('click', (e) => {
@@ -142,7 +159,13 @@ export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarCo
       onSeguirDisparo();
     });
   }
-  banner.querySelector('button').addEventListener('click', () => onLanzarContramedida(shotId));
+  banner.querySelector('.btn-cnt-counter').addEventListener('click', () => onLanzarContramedida(shotId));
+  const btnIntercept = banner.querySelector('.btn-cnt-intercept');
+  if (onInterceptar) {
+    btnIntercept.addEventListener('click', () => onInterceptar(shotId));
+  } else {
+    btnIntercept.disabled = true;
+  }
   cont.appendChild(banner);
 }
 
@@ -162,11 +185,35 @@ export function actualizarCuentaAtrasAmenazas(shots) {
 export function marcarBannerContramedida(shotId) {
   const banner = document.getElementById(`threat-${shotId}`);
   if (!banner) return;
-  const btn = banner.querySelector('button');
+  const btn = banner.querySelector('.btn-cnt-counter');
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Contramedidas lanzadas ✓';
     banner.classList.add('protected');
+  }
+}
+
+/** Marca el botón de interceptor del banner como ya usado (interceptor lanzado). */
+export function marcarBannerInterceptado(shotId) {
+  const banner = document.getElementById(`threat-${shotId}`);
+  if (!banner) return;
+  const btn = banner.querySelector('.btn-cnt-intercept');
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.activo = '1';
+    btn.textContent = 'Interceptor en vuelo';
+  }
+}
+
+/**
+ * Habilita/deshabilita los botones "Interceptar" de todos los banners según si
+ * ya hay un interceptor en vuelo. Los marcados como lanzados se quedan como
+ * están (muestran "Interceptor en vuelo").
+ */
+export function sincronizarBotonesInterceptores(deshabilitar) {
+  for (const btn of document.querySelectorAll('.btn-cnt-intercept')) {
+    if (btn.dataset.activo === '1') continue;
+    btn.disabled = !!deshabilitar;
   }
 }
 
