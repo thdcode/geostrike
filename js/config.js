@@ -36,3 +36,10 @@ export const MAX_DISTANCE_KM = 20_000; // ~media circunferencia terrestre
 
 // Cada cuánto se revisa localmente si hay disparos por resolver o amenazas nuevas
 export const TICK_INTERVAL_MS = 5_000;
+
+// Modo depuración: se activa con ?debug en la URL o con el toggle del HUD (🔬).
+// Muestra los bots destacados en el mapa y dibuja sus disparos desde su posición
+// real (la posición de un bot es pública; la de los jugadores nunca se revela).
+export const DEBUG_MODE =
+  new URLSearchParams(location.search).has('debug') ||
+  localStorage.getItem('geostrike_debug') === '1';

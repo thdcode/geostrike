@@ -5,7 +5,7 @@
 //   - Disparos ajenos: se anima la LLEGADA convergiendo al destino desde el
 //     perímetro, sin inventar ni revelar el origen del jugador que dispara.
 
-import { SPLASH_RADIUS_KM } from './config.js';
+import { SPLASH_RADIUS_KM, DEBUG_MODE } from './config.js';
 import { formatMMSS, haversineKm } from './physics.js';
 
 let map;
@@ -13,6 +13,8 @@ let miMarcador = null;
 let rendererBots = null; // canvas dedicado: miles de bots sin miles de nodos SVG
 const botsDatos = new Map();     // botId -> { lat, lng, city } (todos los bots activos)
 const marcadoresBots = new Map(); // botId -> L.CircleMarker (solo los visibles en el viewport)
+const etiquetasBots = new Map();  // botId -> L.Marker divIcon (solo en modo depuración)
+let modoDebug = DEBUG_MODE;       // bots destacados y disparos de bot con origen real
 let botsPendientes = null;
 let botsTimer = null;
 const animaciones = new Map();    // shotId -> animación del disparo
@@ -100,6 +102,33 @@ export function actualizarBots(bots) {
   programarFlushBots();
 }
 
+/** Estado del modo depuración (bots destacados + disparos de bot con origen real). */
+export function modoDebugActivo() {
+  return modoDebug;
+}
+
+/** Activa/desactiva el modo depuración y re-renderiza los bots. */
+export function establecerModoDebug(activo) {
+  modoDebug = !!activo;
+  // Limpia los marcadores (y etiquetas) actuales para recrearlos con el nuevo estilo.
+  for (const [, marker] of marcadoresBots) map.removeLayer(marker);
+  for (const [, etiqueta] of etiquetasBots) map.removeLayer(etiqueta);
+  marcadoresBots.clear();
+  etiquetasBots.clear();
+  procesarBots();
+}
+
+/** Devuelve la posición vendida de un bot ({ lat, lng }) o null si no se conoce. */
+export function posicionBot(botId) {
+  const d = botsDatos.get(botId);
+  return d ? { lat: d.lat, lng: d.lng } : null;
+}
+
+function limpiarEtiquetaBot(botId) {
+  const e = etiquetasBots.get(botId);
+  if (e) { map.removeLayer(e); etiquetasBots.delete(botId); }
+}
+
 function procesarBots() {
   const datos = botsPendientes;
   botsPendientes = null;
@@ -122,6 +151,7 @@ function procesarBots() {
       if (!bot || bot.status === 'down') {
         const m = marcadoresBots.get(botId);
         if (m) { map.removeLayer(m); marcadoresBots.delete(botId); }
+        limpiarEtiquetaBot(botId);
         botsDatos.delete(botId);
       }
     }
@@ -129,16 +159,43 @@ function procesarBots() {
 
   // 2) Culling por viewport: solo se dibujan los bots dentro de los límites (+margen).
   const bounds = map.getBounds().pad(0.5);
+  const estilo = modoDebug
+    ? { radius: 7, color: '#F2A93B', fillColor: '#F2A93B', fillOpacity: 0.9, weight: 2 }
+    : { radius: 5, color: '#7C8AA5', fillColor: '#7C8AA5', fillOpacity: 0.8, weight: 1 };
   for (const [botId, d] of botsDatos) {
     if (!bounds.contains([d.lat, d.lng])) continue;
     let marker = marcadoresBots.get(botId);
     if (!marker) {
-      const opts = { radius: 5, color: '#7C8AA5', fillColor: '#7C8AA5', fillOpacity: 0.8, weight: 1 };
+      const opts = { ...estilo };
       if (rendererBots) opts.renderer = rendererBots;
-      marker = L.circleMarker([d.lat, d.lng], opts).addTo(map).bindTooltip(`Bot · ${d.city}`);
+      const detalle = modoDebug
+        ? `<b>[BOT]</b> ${botId}<br>zona ${d.city}<br>${d.lat.toFixed(2)}, ${d.lng.toFixed(2)}`
+        : `Bot · ${d.city}`;
+      marker = L.circleMarker([d.lat, d.lng], opts).addTo(map).bindTooltip(detalle);
       marcadoresBots.set(botId, marker);
     } else if (marker._latlng.lat !== d.lat || marker._latlng.lng !== d.lng) {
       marker.setLatLng([d.lat, d.lng]);
+    }
+
+    // En modo depuración se añade una etiqueta permanente con el id corto del bot.
+    if (modoDebug) {
+      if (!etiquetasBots.has(botId)) {
+        const idCorto = botId.slice(-10);
+        const etiqueta = L.marker([d.lat, d.lng], {
+          icon: L.divIcon({
+            className: 'bot-debug-label',
+            html: `<span class="bot-debug-label-text mono">${idCorto}</span>`,
+            iconSize: [0, 0],
+          }),
+          interactive: false, keyboard: false,
+          zIndexOffset: 800,
+        }).addTo(map);
+        etiquetasBots.set(botId, etiqueta);
+      } else {
+        etiquetasBots.get(botId).setLatLng([d.lat, d.lng]);
+      }
+    } else {
+      limpiarEtiquetaBot(botId);
     }
   }
 
@@ -148,6 +205,7 @@ function procesarBots() {
     if (!d || !bounds.contains([d.lat, d.lng])) {
       map.removeLayer(marker);
       marcadoresBots.delete(botId);
+      limpiarEtiquetaBot(botId);
     }
   }
 }
@@ -160,11 +218,14 @@ function procesarBots() {
  * @param {object} shot - nodo completo del disparo (destLat, destLng, firedAt, impactAt, resolved)
  * @param {{lat:number,lng:number}|null} origen - tu posición si el disparo es tuyo; null para ajenos
  * @param {boolean} amenaza - si el disparo entra dentro de tu radio de advertencia
+ * @param {{lat:number,lng:number}|null} origenAjeno - origen REAL de un disparo ajeno
+ *   cuando es público (bots). Sigue siendo un disparo enemigo (rojo), pero la
+ *   trayectoria arranca desde ahí en vez de converger desde el perímetro.
  */
-export function rastrearDisparo(shotId, shot, origen, amenaza = false) {
+export function rastrearDisparo(shotId, shot, origen, amenaza = false, origenAjeno = null) {
   let a = animaciones.get(shotId);
   if (!a) {
-    a = crearAnimacion(shotId, shot, origen, amenaza);
+    a = crearAnimacion(shotId, shot, origen, amenaza, origenAjeno);
     animaciones.set(shotId, a);
     if (a.estado === 'vuelo' && !a.estatico && !prefersReducedMotion()) arrancarBucle();
     return;
@@ -424,7 +485,7 @@ function promocionarADetallado(a) {
   if (!prefersReducedMotion()) arrancarBucle();
 }
 
-function crearAnimacion(shotId, shot, origen, amenaza) {
+function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
   const esPreview = shotId === 'preview';
   const esEnemigo = !origen && !esPreview;
   const esPropio = !esEnemigo && !esPreview;
@@ -439,7 +500,14 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
   if (cuentaCupo) enemigosAnimados++;
 
   const destino = [shot.destLat, shot.destLng];
-  const origenDef = origen ? [origen.lat, origen.lng] : puntoAproximacion(destino, shotId);
+  // Origen usado para la trayectoria: el de un disparo propio (origen), el real
+  // de un disparo de bot (origenAjeno) o un punto sintético del perímetro para
+  // los demás disparos ajenos (no se revela el origen de un jugador real).
+  const origenDef = origen
+    ? [origen.lat, origen.lng]
+    : origenAjeno
+      ? [origenAjeno.lat, origenAjeno.lng]
+      : puntoAproximacion(destino, shotId);
   const color = esPreview ? COLOR_PREVIEW : esEnemigo ? COLOR_ENEMIGO : COLOR_PROPIO;
 
   const marcador = estatico
@@ -508,7 +576,7 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     puntos: [], ultimoPuntoAt: 0, ultimaPos: null, color,
     estado: shot.resolved ? 'impactado' : 'vuelo',
     amenaza: amenaza && !shot.resolved,
-    recortarRuta: esEnemigo,
+    recortarRuta: esEnemigo && !origenAjeno,
     contramedida: false,
     tier: detallado ? 'full' : reducido ? 'reduced' : 'static',
     estatico,

@@ -304,6 +304,11 @@ function onCambioDisparos(shots) {
 
   for (const [shotId, shot] of Object.entries(shots)) {
     const origen = shot.shooterId === estadoJugador.playerId ? miUbicacion : null;
+    // El origen de un disparo de bot es público (vive en players/{botId}), así
+    // que se puede animar la trayectoria desde su posición real, no desde el
+    // perímetro. Los disparos de jugadores reales NUNCA revelan su origen.
+    const esBot = typeof shot.shooterId === 'string' && shot.shooterId.startsWith('bot_');
+    const origenAjeno = esBot ? Mapa.posicionBot(shot.shooterId) : null;
     const amenaza = !shot.resolved && miUbicacion &&
       haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= WARNING_RADIUS_KM;
     // Impactos resueltos hace más de IMPACTO_VISIBLE_MS no se visualizan en el
@@ -312,7 +317,7 @@ function onCambioDisparos(shots) {
     if (impactoViejo) {
       Mapa.limpiarDisparo(shotId);
     } else {
-      Mapa.rastrearDisparo(shotId, shot, origen, amenaza);
+      Mapa.rastrearDisparo(shotId, shot, origen, amenaza, origenAjeno);
 
       // Reaplica el color de contramedida si la animación se recreó.
       if (contramedidasLanzadas.has(shotId)) Mapa.marcarContramedida(shotId);
@@ -514,6 +519,15 @@ function wireUI() {
   document.getElementById('btn-cancel-shot')?.addEventListener('click', cancelarApuntado);
 
   document.getElementById('btn-open-ranking')?.addEventListener('click', () => UI.alternarModal('ranking-modal', true));
+  document.getElementById('btn-toggle-debug')?.addEventListener('click', () => {
+    const activo = !Mapa.modoDebugActivo();
+    localStorage.setItem('geostrike_debug', activo ? '1' : '0');
+    Mapa.establecerModoDebug(activo);
+    document.getElementById('btn-toggle-debug').classList.toggle('active', activo);
+    UI.mostrarToast(activo ? '🔬 Modo depuración (bots) activado' : 'Modo depuración desactivado', 'info');
+  });
+  // Refleja el estado inicial si ?debug venía en la URL (sin esperar al clic).
+  if (Mapa.modoDebugActivo()) document.getElementById('btn-toggle-debug')?.classList.add('active');
   document.getElementById('btn-toggle-activity')?.addEventListener('click', () => {
     const panel = document.getElementById('activity-panel');
     UI.alternarActividad(panel?.classList.contains('hidden'));

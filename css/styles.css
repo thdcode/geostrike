@@ -149,6 +149,18 @@ html, body {
   border-radius: 4px; padding: 5px 9px; font-size: 14px; cursor: pointer;
 }
 .btn-ghost:hover { border-color: var(--green); }
+.btn-ghost.active { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+
+/* ================= Modo depuración (bots) ================= */
+.bot-debug-label {
+  pointer-events: none;
+}
+.bot-debug-label-text {
+  position: absolute; top: -38px; left: 50%; transform: translateX(-50%);
+  background: rgba(11,18,32,0.92); border: 1px solid var(--amber-dim); color: var(--amber);
+  font-size: 9px; letter-spacing: 0.2px; padding: 0 4px; border-radius: 3px;
+  white-space: nowrap;
+}
 
 /* ================= Banner de ubicación manual ================= */
 .banner-manual {
