@@ -45,7 +45,16 @@ export function inicializarMapa(lat, lng) {
     noWrap: true, // una única copia del mundo, sin repetición lateral al alejar
   }).addTo(map);
 
+  // Cualquier interacción del usuario con el mapa anula el seguimiento de la vista.
+  map.on('dragstart', detenerSeguimiento);
+  map.on('zoomstart', detenerSeguimiento);
+  map.getContainer().addEventListener('mousedown', detenerSeguimiento, true);
+
   return map;
+}
+
+function detenerSeguimiento() {
+  seguirShotId = null;
 }
 
 export function obtenerMapa() {
