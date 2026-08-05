@@ -2,6 +2,8 @@
 // la información del dispositivo (deviceId en localStorage) + el nickname.
 // El estado de la partida activa vive en Firebase bajo sessions/{deviceId}.
 
+import { LAUNCH_SLOTS } from './config.js';
+
 const NICKNAME_KEY = 'geostrike:nickname';
 const DEVICE_ID_KEY = 'geostrike:deviceId';
 const PLAYER_ID_KEY = 'geostrike:playerId'; // legado: se migra a sessions/ en Firebase
@@ -35,9 +37,27 @@ export const estadoJugador = {
   hp: 100,
   status: 'alive',
   teamId: null,
-  nextShotAvailableAt: 0,
+  launchSlots: [], // 3 instantes (availableAt) de los slots de lanzamiento; el Worker los gestiona
   nextCounterAvailableAt: 0,
   interceptorInFlight: null, // { interceptorId, until } mientras haya uno en vuelo
   lat: null,
   lng: null,
 };
+
+/**
+ * Estado de los slots de lanzamiento a partir del array que mantiene el Worker.
+ * Devuelve cuántos hay libres ahora y cuándo se renueva el próximo ocupado.
+ */
+export function informacionSlots(launchSlots = []) {
+  const ahora = Date.now();
+  const times = Array.from({ length: LAUNCH_SLOTS }, (_, i) =>
+    Number.isFinite(launchSlots?.[i]) ? launchSlots[i] : 0
+  );
+  const disponibles = times.filter((t) => t <= ahora).length;
+  const ocupados = times.filter((t) => t > ahora);
+  return {
+    total: LAUNCH_SLOTS,
+    disponibles,
+    proximo: ocupados.length ? Math.min(...ocupados) : 0,
+  };
+}

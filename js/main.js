@@ -1,10 +1,10 @@
 // main.js — orquesta la carga inicial y el bucle de juego.
 // Lee esto de arriba a abajo como el mapa mental de todo el cliente.
 
-import { WORKER_BASE_URL, SHOT_COOLDOWN_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM, SPLASH_RADIUS_KM, IMPACTO_VISIBLE_MS } from './config.js';
+import { WORKER_BASE_URL, LAUNCH_SLOT_RENEW_MS, TICK_INTERVAL_MS, WARNING_RADIUS_KM, SPLASH_RADIUS_KM, IMPACTO_VISIBLE_MS } from './config.js';
 import { obtenerUbicacion, seleccionarUbicacionManual } from './geolocation.js';
 import { cifrarUbicacion, cachearUbicacionLocal, leerUbicacionCacheada } from './crypto.js';
-import { obtenerIdentidadDispositivo, guardarNickname, leerPlayerIdLegacy, estadoJugador } from './player.js';
+import { obtenerIdentidadDispositivo, guardarNickname, leerPlayerIdLegacy, estadoJugador, informacionSlots } from './player.js';
 import * as RT from './realtime.js';
 import * as Mapa from './map.js';
 import { haversineKm, calcularFlightMs, formatMMSS } from './physics.js';
@@ -264,7 +264,7 @@ function renderHUD(teamName) {
     hp: estadoJugador.hp,
     status: estadoJugador.status,
     teamName,
-    nextShotAvailableAt: estadoJugador.nextShotAvailableAt,
+    launchSlots: estadoJugador.launchSlots,
     nextCounterAvailableAt: estadoJugador.nextCounterAvailableAt,
     interceptorInFlight: estadoJugador.interceptorInFlight || (interceptorEnVueloId ? { until: Date.now() + 60_000 } : null),
     puntos: misPuntos,
@@ -277,6 +277,7 @@ function renderHUD(teamName) {
 // el impacto baje de forma continua.
 function actualizarRelojes() {
   renderHUD(nombreEquipoActual);
+  UI.actualizarSlotsPreviewDisparo();
   UI.actualizarCuentaAtrasAmenazas(ultimoSnapshotDisparos);
   Mapa.actualizarETAs();
 }
@@ -516,8 +517,9 @@ async function confirmarDisparo() {
     await manejarEliminacion();
     return;
   }
-  if (Date.now() < (estadoJugador.nextShotAvailableAt || 0)) {
-    UI.mostrarToast('Todavía en recarga.', 'error');
+  const { disponibles } = informacionSlots(estadoJugador.launchSlots);
+  if (disponibles <= 0) {
+    UI.mostrarToast('No hay slots de lanzamiento disponibles. Espera a que se renueve uno.', 'error');
     return;
   }
 
@@ -543,7 +545,9 @@ async function confirmarDisparo() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shotId }),
   }).catch(() => {}); // el aviso a amenazados no es crítico si falla puntualmente
 
-  estadoJugador.nextShotAvailableAt = Date.now() + SHOT_COOLDOWN_MS;
+  // Optimista: el disparo consume un slot localmente hasta que el Worker
+  // confirme por realtime el array launchSlots actualizado.
+  marcarSlotOcupadoLocalmente();
   const destinoLanzado = { lat: destinoElegido.lat, lng: destinoElegido.lng };
   Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
@@ -554,6 +558,23 @@ async function confirmarDisparo() {
     { lat: destinoLanzado.lat, lng: destinoLanzado.lng, shotId }
   );
   UI.mostrarToast(`Disparo lanzado — impacto en ${formatMMSS(flightMs)}.`, 'success');
+}
+
+/** Marca localmente un slot como ocupado (ahora + 30 s) hasta que el Worker lo confirme. */
+function marcarSlotOcupadoLocalmente() {
+  const ahora = Date.now();
+  const slots = Array.isArray(estadoJugador.launchSlots) && estadoJugador.launchSlots.length
+    ? [...estadoJugador.launchSlots]
+    : [0, 0, 0];
+  const idx = slots.findIndex((t) => t <= ahora);
+  if (idx >= 0) {
+    slots[idx] = ahora + LAUNCH_SLOT_RENEW_MS;
+  } else if (slots.length > 0) {
+    // Ninguno libre (raro en local): ocupa el que antes se renueve.
+    const menor = Math.min(...slots);
+    slots[slots.indexOf(menor)] = ahora + LAUNCH_SLOT_RENEW_MS;
+  }
+  estadoJugador.launchSlots = slots;
 }
 
 function cancelarApuntado() {

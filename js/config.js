@@ -26,9 +26,15 @@ export const VAPID_PUBLIC_KEY = "BB6QOy0ZwvDJmQeBN1-fQhFCFsefvS1LZ5SlPHlTzs2a2eT
 // --- Constantes de juego (deben coincidir con src/balance.js del Worker) ---
 export const SPLASH_RADIUS_KM = 50;
 export const WARNING_RADIUS_KM = 200;
-export const SHOT_COOLDOWN_MS = 30_000; // 30s entre disparos propios
+export const SHOT_COOLDOWN_MS = 30_000; // 30s entre disparos propios (legacy, sin slots)
 export const COUNTERMEASURE_COOLDOWN_MS = 90_000; // 1,5 min
 export const IMPACTO_VISIBLE_MS = 5 * 60_000; // impactos resueltos de más de 5 min no se dibujan en el mapa
+
+// --- Slots de lanzamiento (mirror de balance.js del Worker) ---
+// 3 slots por jugador; cada disparo ocupa el primer slot libre y ese slot se
+// renueva 30 s después del lanzamiento. Sin slots libres no se puede lanzar.
+export const LAUNCH_SLOTS = 3;
+export const LAUNCH_SLOT_RENEW_MS = 30_000;
 
 // --- Disparo interceptor (mirror de balance.js del Worker) ---
 export const MAX_INTERCEPTORS_IN_FLIGHT = 1; // solo un interceptor en vuelo por jugador

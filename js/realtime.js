@@ -57,7 +57,7 @@ export async function registrarJugador(playerId, nickname, locationEnc) {
   if (!snap.exists()) {
     await set(playerRef, {
       nickname, locationEnc, hp: 100, status: 'alive', teamId: null,
-      nextShotAvailableAt: 0, nextCounterAvailableAt: 0, lastSeen: Date.now(),
+      launchSlots: [0, 0, 0], nextCounterAvailableAt: 0, lastSeen: Date.now(),
     });
   } else {
     await update(playerRef, { locationEnc, lastSeen: Date.now() });

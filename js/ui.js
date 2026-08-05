@@ -3,8 +3,9 @@
 // siempre produce un aviso que dice "Contramedida lanzada", nunca otra cosa.
 
 import { formatMMSS } from './physics.js';
+import { estadoJugador, informacionSlots } from './player.js';
 
-export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextCounterAvailableAt, interceptorInFlight, puntos, mitigatedDamage }) {
+export function actualizarHUD({ hp, status, teamName, launchSlots, nextCounterAvailableAt, interceptorInFlight, puntos, mitigatedDamage }) {
   const hpFill = document.getElementById('hp-fill');
   const hpLabel = document.getElementById('hp-label');
   if (hpFill) hpFill.style.width = `${Math.max(0, hp)}%`;
@@ -18,9 +19,24 @@ export function actualizarHUD({ hp, status, teamName, nextShotAvailableAt, nextC
   const mitigadoEl = document.getElementById('hud-mitigated');
   if (mitigadoEl) mitigadoEl.textContent = (mitigatedDamage ?? 0).toLocaleString('es-ES');
 
-  actualizarCooldown('shot-cooldown', nextShotAvailableAt);
+  actualizarSlotsHUD(launchSlots);
   actualizarCooldown('counter-cooldown', nextCounterAvailableAt);
   actualizarInterceptorStatus(interceptorInFlight);
+}
+
+function actualizarSlotsHUD(launchSlots) {
+  const el = document.getElementById('shot-cooldown');
+  if (!el) return;
+  const { total, disponibles, proximo } = informacionSlots(launchSlots);
+  if (disponibles > 0) {
+    el.textContent = `${disponibles}/${total}`;
+    el.classList.add('ready');
+    el.classList.remove('busy');
+  } else {
+    el.textContent = `0/${total} · ${formatMMSS(proximo - Date.now())}`;
+    el.classList.remove('ready');
+    el.classList.add('busy');
+  }
 }
 
 function actualizarInterceptorStatus(inflight) {
@@ -304,6 +320,26 @@ export function mostrarPreviewDisparo(distanciaKm, flightMs) {
   el.classList.remove('hidden');
   el.querySelector('.preview-distance').textContent = `${Math.round(distanciaKm).toLocaleString('es-ES')} km`;
   el.querySelector('.preview-time').textContent = formatMMSS(flightMs);
+  actualizarSlotsPreviewDisparo();
+}
+
+/**
+ * Refresca la fila de slots del popup de disparo. Solo muestra el botón de
+ * confirmar cuando hay al menos un slot de lanzamiento disponible; si no,
+ * muestra la cuenta atrás hasta el próximo slot libre.
+ */
+export function actualizarSlotsPreviewDisparo() {
+  const el = document.getElementById('shot-preview');
+  if (!el || el.classList.contains('hidden')) return;
+  const { total, disponibles, proximo } = informacionSlots(estadoJugador.launchSlots);
+  const slotsEl = el.querySelector('.preview-slots');
+  const confirmBtn = el.querySelector('#btn-confirm-shot');
+  if (slotsEl) {
+    slotsEl.textContent = disponibles > 0
+      ? `${disponibles}/${total} libres`
+      : `0/${total} · ${formatMMSS(proximo - Date.now())}`;
+  }
+  if (confirmBtn) confirmBtn.classList.toggle('hidden', disponibles <= 0);
 }
 
 export function ocultarPreviewDisparo() {
