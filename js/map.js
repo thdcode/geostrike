@@ -33,6 +33,8 @@ const COLOR_ENEMIGO = '#FF6B6B';
 const COLOR_PREVIEW = '#8AD8FF';
 const COLOR_CONTRA = '#4FC3F7';      // celeste: disparo protegido con contramedida (la lanzaste tú)
 const COLOR_CONTRA_RECIBIDA = '#9C6ADE'; // violeta: disparo TUYO que está siendo contrarrestado
+const COLOR_RESULTADO_HIT = '#2CF499';   // verde: disparo propio con impacto
+const COLOR_RESULTADO_MISS = '#7C8AA5';  // gris: disparo propio que falló
 
 export function inicializarMapa(lat, lng) {
   // Una sola copia del mundo: sin worldCopyJump (evita que se repita al pane/zoom)
@@ -284,6 +286,49 @@ function resaltarPunto(lat, lng, color) {
   }, 4000);
 }
 
+/** Lleva la vista al disparo indicado y, si está en vuelo, lo sigue. Devuelve false si no existe. */
+export function seguirDisparo(shotId) {
+  const a = animaciones.get(shotId);
+  if (!a || !map) return false;
+  if (a.estado === 'vuelo' && !a.estatico) {
+    const pos = interpolar(a, progreso(a));
+    map.panTo(pos, { animate: true });
+    resaltarMisil(a);
+    seguirShotId = shotId;
+  } else {
+    map.panTo(a.destino, { animate: true });
+    seguirShotId = null;
+    resaltarPunto(a.destino[0], a.destino[1], colorDe(a));
+  }
+  return true;
+}
+
+/** Feedback visual del resultado de un disparo PROPIO en su punto de impacto (acierto o fallo). */
+export function marcarResultadoDisparo(shotId, hits, lat, lng) {
+  if (!map) return;
+  const hayImpacto = Array.isArray(hits) && hits.length > 0;
+  const a = animaciones.get(shotId);
+
+  // Residuo del círculo según resultado: verde sólido si hubo impacto, gris
+  // discontinuo si falló.
+  const estilo = hayImpacto
+    ? { color: COLOR_RESULTADO_HIT, weight: 2.5, dashArray: null, fillOpacity: 0.18, opacity: 1 }
+    : { color: COLOR_RESULTADO_MISS, weight: 1.5, dashArray: '3 5', fillOpacity: 0.05, opacity: 0.8 };
+  if (a?.circulo) a.circulo.setStyle(estilo);
+  a?.impactMarker?.getElement()?.style?.setProperty?.('color', hayImpacto ? COLOR_RESULTADO_HIT : COLOR_RESULTADO_MISS);
+
+  // Etiqueta de estado visible unos segundos sobre el punto del impacto.
+  const overlay = L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: 'impact-result-badge',
+      html: `<div class="impact-result ${hayImpacto ? 'hit' : 'miss'}">${hayImpacto ? '💥 Impacto' : '✕ Sin impacto'}</div>`,
+      iconSize: [0, 0], iconAnchor: [0, 0],
+    }),
+    interactive: false, keyboard: false,
+  }).addTo(map);
+  setTimeout(() => map.removeLayer(overlay), 6000);
+}
+
 // ---------- Preview de apuntado ----------
 
 export function mostrarPreview(origen, destino, flightMs) {
@@ -382,6 +427,7 @@ function promocionarADetallado(a) {
 function crearAnimacion(shotId, shot, origen, amenaza) {
   const esPreview = shotId === 'preview';
   const esEnemigo = !origen && !esPreview;
+  const esPropio = !esEnemigo && !esPreview;
   // Niveles de detalle para no saturar la visualización con muchos disparos:
   //   full    -> propios, amenazas y preview: animación completa con ETA y ping.
   //   reduced -> ajenos no-amenaza (cupo limitado): animados pero sin ETA ni ping.
@@ -467,6 +513,7 @@ function crearAnimacion(shotId, shot, origen, amenaza) {
     tier: detallado ? 'full' : reducido ? 'reduced' : 'static',
     estatico,
     cuentaCupo,
+    esPropio,
   };
 
   if (a.estado === 'impactado') {

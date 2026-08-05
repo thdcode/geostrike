@@ -121,7 +121,7 @@ export function alternarActividad(mostrar) {
   if (panel) panel.classList.toggle('hidden', !mostrar);
 }
 
-export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida) {
+export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida, onSeguirDisparo = null) {
   const cont = document.getElementById('threat-banner-container');
   if (!cont) return;
   if (document.getElementById(`threat-${shotId}`)) return; // ya mostrado
@@ -131,9 +131,17 @@ export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarCo
   banner.className = 'threat-banner';
   banner.dataset.shotId = shotId;
   banner.innerHTML = `
-    <span>⚠ Disparo entrante a ${Math.round(distanciaKm)} km — impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
+    <span class="threat-msg">⚠ Disparo entrante a ${Math.round(distanciaKm)} km — impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
     <button class="btn-counter-inline">Lanzar contramedida</button>
   `;
+  // Clic en el banner (fuera del botón) → sigue el disparo en el mapa.
+  if (onSeguirDisparo) {
+    banner.classList.add('clicable');
+    banner.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      onSeguirDisparo();
+    });
+  }
   banner.querySelector('button').addEventListener('click', () => onLanzarContramedida(shotId));
   cont.appendChild(banner);
 }

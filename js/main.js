@@ -329,6 +329,8 @@ function onCambioDisparos(shots) {
         shotsYaResueltosMostrados.add(shotId);
         const entrada = UI.mostrarResultadoImpacto(shot.result, { lat: shot.destLat, lng: shot.destLng, shotId });
         if (entrada) registrarActividad(entrada.texto, entrada.tipo, entrada.destino);
+        // Feedback visual en el mapa del resultado (acierto o fallo).
+        Mapa.marcarResultadoDisparo(shotId, shot.result.hits, shot.destLat, shot.destLng);
       }
     }
 
@@ -355,7 +357,13 @@ function tick() {
   const amenazas = Counter.disparosQueMeAmenazan(ultimoSnapshotDisparos, miUbicacion);
   for (const amenaza of amenazas) {
     const restante = amenaza.impactAt - ahora;
-    UI.mostrarBannerAmenaza(amenaza.shotId, amenaza.distanciaKm, restante, lanzarContramedidaDesdeUI);
+    UI.mostrarBannerAmenaza(
+      amenaza.shotId,
+      amenaza.distanciaKm,
+      restante,
+      lanzarContramedidaDesdeUI,
+      () => Mapa.seguirDisparo(amenaza.shotId)
+    );
   }
 }
 
