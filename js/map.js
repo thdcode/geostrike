@@ -29,7 +29,15 @@ const COLOR_CONTRA = '#4FC3F7';      // celeste: disparo protegido con contramed
 const COLOR_CONTRA_RECIBIDA = '#9C6ADE'; // violeta: disparo TUYO que está siendo contrarrestado
 
 export function inicializarMapa(lat, lng) {
-  map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([lat, lng], 6);
+  // Una sola copia del mundo: sin worldCopyJump (evita que se repita al pane/zoom)
+  // y con límites máximos que impiden salirse de una única vuelta del planeta.
+  map = L.map('map', {
+    zoomControl: true,
+    worldCopyJump: false,
+    minZoom: 1,
+    maxBounds: [[-85.06, -180], [85.06, 180]],
+    maxBoundsViscosity: 1.0,
+  }).setView([lat, lng], 6);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
