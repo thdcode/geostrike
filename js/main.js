@@ -410,14 +410,22 @@ function onCambioDisparos(shots) {
 function tick() {
   const ahora = Date.now();
 
-  // a) ¿Algún disparo (mío o de otro) ya debería resolverse y nadie lo ha hecho?
+  // a) Disparos que ya deberían resolverse y aún no se resolvieron. Este cliente
+  //    solo resuelve lo que le compete: los disparos PROPIOS y los que impactan
+  //    dentro de su radio de acción (SPLASH_RADIUS_KM). El resto (disparos de
+  //    bots lejos, o hacia otros jugadores) lo resuelven otros clientes o el
+  //    Cron Trigger del Worker. Todos los competentes se mandan en UNA llamada
+  //    en lote, en vez de una llamada HTTP por disparo.
+  const pendientesDeResolver = [];
   for (const [shotId, shot] of Object.entries(ultimoSnapshotDisparos)) {
     if (shot.type === 'interceptor') continue; // los interceptores se resuelven con /resolve-interceptor
-    if (!shot.resolved && shot.impactAt <= ahora && !shotsEnProcesoDeResolucion.has(shotId)) {
-      shotsEnProcesoDeResolucion.add(shotId);
-      resolverImpacto(shotId).finally(() => shotsEnProcesoDeResolucion.delete(shotId));
-    }
+    if (shot.resolved || shot.impactAt > ahora || shotsEnProcesoDeResolucion.has(shotId)) continue;
+    const esMio = shot.shooterId === estadoJugador.playerId;
+    const enMiRadio = miUbicacion &&
+      haversineKm(miUbicacion.lat, miUbicacion.lng, shot.destLat, shot.destLng) <= SPLASH_RADIUS_KM;
+    if (esMio || enMiRadio) pendientesDeResolver.push(shotId);
   }
+  if (pendientesDeResolver.length) resolverImpactos(pendientesDeResolver);
 
   // a') ¿Algún interceptor propio ya debería resolverse?
   for (const [shotId, shot] of Object.entries(ultimoSnapshotDisparos)) {
@@ -448,15 +456,18 @@ function tick() {
   UI.sincronizarBotonesInterceptores(Interceptor.hayInterceptorEnVuelo());
 }
 
-async function resolverImpacto(shotId) {
+async function resolverImpactos(shotIds) {
+  for (const id of shotIds) shotsEnProcesoDeResolucion.add(id);
   try {
-    await fetch(`${WORKER_BASE_URL}/resolve-impact`, {
+    await fetch(`${WORKER_BASE_URL}/resolve-impact-batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shotId }),
+      body: JSON.stringify({ shotIds }),
     });
   } catch (err) {
-    console.warn('No se pudo resolver el impacto (se reintentará en el siguiente tick):', err);
+    console.warn('No se pudo resolver el lote de impactos (se reintentará en el siguiente tick):', err);
+  } finally {
+    for (const id of shotIds) shotsEnProcesoDeResolucion.delete(id);
   }
 }
 
