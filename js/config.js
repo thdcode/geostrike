@@ -1,18 +1,8 @@
-// config.js — ÚNICO sitio donde pegar tus valores propios de Firebase/Worker/claves.
+// config.js — ÚNICO sitio donde pegar tus valores propios de Worker/claves.
 // Todos estos valores son PÚBLICOS por diseño (nunca un secret va aquí):
 // la privacidad no depende de ocultar esto, depende del cifrado (ver crypto.js).
-
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-export const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCUbovYDL_4Ya7tv3JOSurnbOBdfW4I5ck",
-  authDomain: "project-8500527a-1548-47e5-a01.firebaseapp.com",
-  databaseURL: "https://project-8500527a-1548-47e5-a01-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "project-8500527a-1548-47e5-a01",
-  storageBucket: "project-8500527a-1548-47e5-a01.firebasestorage.app",
-  messagingSenderId: "557408192360",
-  appId: "1:557408192360:web:fd9f6a2de9841f6d02f8dd",
-  measurementId: "G-STE6B376DH"
-};
+// NOTA: el cliente NO tiene acceso a Appwrite ni a sus API keys — todo el
+// acceso a datos pasa por el Cloudflare Worker (realtime.js).
 
 // URL pública de tu Cloudflare Worker (paso 8 de la guía de instalación)
 export const WORKER_BASE_URL = "https://geostrike-worker.thdcode.workers.dev";
