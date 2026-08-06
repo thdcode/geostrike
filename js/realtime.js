@@ -221,6 +221,7 @@ export async function guardarEventoActividad(playerId, evento) {
 }
 
 export async function obtenerActividad(playerId) {
+  if (playerId) currentPlayerId = playerId; // asegura que el snapshot traiga la actividad de esta partida
   await refrescarSnapshot();
   return (state.activity || {})[playerId] || [];
 }
