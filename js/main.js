@@ -38,18 +38,21 @@ const disparosInterceptadosMostrados = new Set();     // objetivos interceptados
 let interceptorEnVueloId = null;                      // interceptorId propio actualmente en vuelo
 let actividadPersiste = false; // true a partir de que el historial cargado; evita re-persistir entradas del load
 
-// Renderiza un evento en el panel de actividad y, si lleva coordenadas, lo
-// persiste en el historial de la partida en curso (fire-and-forget).
+// Renderiza un evento en el panel de actividad y lo persiste en el historial de
+// la partida en curso (fire-and-forget). Se persisten TODOS los eventos (tengan
+// o no coordenadas): así al recargar se muestra la actividad completa de la
+// partida actual, no solo los con destino geográfico.
 function registrarActividad(texto, tipo, destino = null) {
   UI.anadirActividad(texto, tipo, destino);
-  if (!actividadPersiste || !destino) return;
-  if (!Number.isFinite(destino.lat) || !Number.isFinite(destino.lng)) return;
-  RT.guardarEventoActividad(estadoJugador.playerId, {
+  if (!actividadPersiste) return;
+  const evento = {
     tipo, texto,
-    lat: destino.lat, lng: destino.lng,
-    shotId: destino.shotId || null,
+    lat: destino && Number.isFinite(destino.lat) ? destino.lat : null,
+    lng: destino && Number.isFinite(destino.lng) ? destino.lng : null,
+    shotId: (destino && destino.shotId) || null,
     ts: Date.now(),
-  }).catch(() => {});
+  };
+  RT.guardarEventoActividad(estadoJugador.playerId, evento).catch(() => {});
 }
 
 async function cargarActividadPersistida() {
@@ -59,6 +62,7 @@ async function cargarActividadPersistida() {
     const ordenados = eventos
       .filter((e) => e && e.texto)
       .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    UI.limpiarActividad();
     for (const e of ordenados) {
       UI.anadirActividad(
         e.texto,
@@ -621,7 +625,11 @@ function wireUI() {
   if (Mapa.modoDebugActivo()) document.getElementById('btn-toggle-debug')?.classList.add('active');
   document.getElementById('btn-toggle-activity')?.addEventListener('click', () => {
     const panel = document.getElementById('activity-panel');
-    UI.alternarActividad(panel?.classList.contains('hidden'));
+    const mostrar = panel?.classList.contains('hidden');
+    UI.alternarActividad(mostrar);
+    // Al abrir el panel se recarga SIEMPRE el historial de la partida en curso:
+    // si se cerró la ventana y se reaprieta el botón, se muestra toda la actividad.
+    if (mostrar) cargarActividadPersistida();
   });
   document.getElementById('btn-clear-activity')?.addEventListener('click', UI.limpiarActividad);
   document.querySelectorAll('[data-close-modal]').forEach((btn) =>
