@@ -118,7 +118,15 @@ async function main() {
 
   // 3) Registro cifrado en Firebase
   const locationEnc = cifrarUbicacion(miUbicacion.lat, miUbicacion.lng);
-  await RT.registrarJugador(playerId, estadoJugador.nickname, locationEnc);
+  try {
+    await RT.registrarJugador(playerId, estadoJugador.nickname, locationEnc);
+  } catch (err) {
+    if (err.code === 'SALA_LLENA') {
+      UI.mostrarToast('La sala está llena (máximo de jugadores alcanzado). Inténtalo más tarde.', 'error');
+      return;
+    }
+    throw err;
+  }
 
   // 4) Suscripciones en tiempo real
   RT.suscribirseAJugadorPropio(playerId, onCambioJugadorPropio);

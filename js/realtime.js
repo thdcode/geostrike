@@ -52,15 +52,18 @@ export function finalizarSesion(deviceId) {
 // ---------- Jugador propio ----------
 
 export async function registrarJugador(playerId, nickname, locationEnc) {
-  const playerRef = ref(db, `players/${playerId}`);
-  const snap = await get(playerRef);
-  if (!snap.exists()) {
-    await set(playerRef, {
-      nickname, locationEnc, hp: 100, status: 'alive', teamId: null,
-      launchSlots: [0, 0, 0], nextCounterAvailableAt: 0, lastSeen: Date.now(),
-    });
-  } else {
-    await update(playerRef, { locationEnc, lastSeen: Date.now() });
+  // El registro pasa por el Worker (POST /register), que aplica el tope de
+  // jugadores reales y crea/actualiza el jugador con credenciales elevadas.
+  const res = await fetch(`${WORKER_BASE_URL}/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerId, nickname, locationEnc }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const err = new Error(data.error || 'No se pudo registrar al jugador');
+    if (data.code === 'SALA_LLENA') err.code = 'SALA_LLENA';
+    throw err;
   }
   // Si el jugador cierra la pestaña, se marca lastSeen para que el Worker
   // pueda, si hace falta, ignorar jugadores obsoletos al calcular densidad.
