@@ -4,7 +4,7 @@
 
 GeoStrike es un juego multijugador en tiempo real donde cada jugador aparece en un mapa mundial real. Disparas proyectiles hacia cualquier punto del planeta y el tiempo que tardan en llegar depende de la distancia real entre tu posición y el destino. Cuando el proyectil impacta, causa daño por salpicadura en un radio de 50 km. 
 
-**Tu ubicación es completamente privada.** Ningún otro jugador puede ver ni inferir dónde estás, ni siquiera de forma aproximada.
+**Tu ubicación es completamente privada.** Ningún otro jugador puede ver ni inferir dónde estás, ni siquiera de forma aproximada. 
 
 ---
 
