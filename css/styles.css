@@ -205,26 +205,58 @@ html, body {
   padding: 8px 14px; border-radius: 6px; font-size: 13px;
 }
 
-/* ================= Avisos de disparo entrante ================= */
-.threat-banner-container {
-  position: fixed; top: 54px; left: 0; right: 0; z-index: 22;
-  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+/* ================= Paneles laterales (actividad y disparos entrantes) ================= */
+.side-panel {
+  position: fixed; top: 54px; z-index: 30;
+  width: 300px; max-height: 46vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35); overflow: hidden;
 }
-.threat-banner {
-  pointer-events: all;
-  background: var(--panel-2); border: 1px solid var(--amber-dim); color: var(--amber);
-  padding: 8px 12px; border-radius: 6px; font-size: 12.5px;
-  display: flex; align-items: center; gap: 10px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+.activity-panel { left: 14px; }
+.threat-panel { right: 14px; }
+.activity-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
 }
-.threat-banner .countdown-inline { color: var(--text); }
-.threat-banner.clicable { cursor: pointer; }
-.threat-banner.clicable:hover { border-color: var(--amber); box-shadow: 0 4px 16px rgba(255,170,60,0.25); }
-.threat-banner.protected { border-color: #1E5A42; color: var(--green); }
+.activity-clear {
+  background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer;
+}
+.activity-clear:hover { color: var(--text); }
+.activity-list {
+  overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.activity-entry {
+  font-size: 12px; line-height: 1.35; padding: 6px 8px; border-left: 3px solid var(--muted);
+  background: var(--panel-2); border-radius: 4px;
+}
+.activity-entry.tactivo-shot { border-left-color: var(--amber); }
+.activity-entry.tactivo-hit { border-left-color: var(--green); }
+.activity-entry.tactivo-damage { border-left-color: var(--red); }
+.activity-entry.tactivo-info { border-left-color: var(--muted); }
+.activity-entry.clicable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
+.activity-entry.clicable:hover { background: var(--panel-3, #152033); transform: translateX(-2px); }
+
+/* ================= Panel de disparos entrantes ================= */
+.threat-item {
+  border-left: 3px solid var(--amber); background: var(--panel-2);
+  border-radius: 4px; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px;
+}
+.threat-item.clicable { cursor: pointer; transition: background 0.15s; }
+.threat-item.clicable:hover { background: var(--panel-3, #152033); }
+.threat-item.protected { border-left-color: var(--green); }
+.threat-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.threat-title { color: var(--amber); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
+.threat-dist { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.threat-body { font-size: 11.5px; color: var(--text); }
+.threat-body .countdown-inline { color: var(--green); }
+.threat-actions { display: flex; gap: 6px; margin-top: 2px; }
 .btn-counter-inline {
   background: var(--green-dim); border: 1px solid #1E5A42; color: var(--green);
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px;
-  padding: 4px 8px; border-radius: 4px; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.3px;
+  padding: 4px 7px; border-radius: 4px; cursor: pointer;
 }
 .btn-counter-inline:disabled { opacity: 0.55; cursor: default; }
 .btn-counter-inline:hover { background: #1E5A42; }
@@ -307,35 +339,6 @@ html, body {
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast-success { border-color: var(--green-dim); }
 .toast-error { border-color: var(--red-dim); }
-
-/* ================= Panel de actividad ================= */
-.activity-panel {
-  position: fixed; top: 54px; left: 14px; z-index: 30;
-  width: 300px; max-height: 46vh; display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.35); overflow: hidden;
-}
-.activity-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
-}
-.activity-clear {
-  background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer;
-}
-.activity-clear:hover { color: var(--text); }
-.activity-list {
-  overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
-}
-.activity-entry {
-  font-size: 12px; line-height: 1.35; padding: 6px 8px; border-left: 3px solid var(--muted);
-  background: var(--panel-2); border-radius: 4px;
-}
-.activity-entry.tactivo-shot { border-left-color: var(--amber); }
-.activity-entry.tactivo-hit { border-left-color: var(--green); }
-.activity-entry.tactivo-damage { border-left-color: var(--red); }
-.activity-entry.tactivo-info { border-left-color: var(--muted); }
-.activity-entry.clicable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
-.activity-entry.clicable:hover { background: var(--panel-3, #152033); transform: translateX(-2px); }
 
 .impact-x-icon {
   background: transparent; border: none; font-size: 16px; font-weight: 700;

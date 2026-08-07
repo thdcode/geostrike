@@ -48,6 +48,7 @@
     <button id="btn-enable-push" class="btn-ghost" title="Activar notificaciones">🔔</button>
     <button id="btn-toggle-debug" class="btn-ghost" title="Modo depuración (bots)">🔬</button>
     <button id="btn-toggle-activity" class="btn-ghost" title="Ver actividad">📋</button>
+    <button id="btn-toggle-threats" class="btn-ghost" title="Disparos entrantes">📡</button>
     <button id="btn-open-ranking" class="btn-ghost" title="Ver ranking">🏆</button>
     <button id="btn-end-game" class="btn-ghost" title="Finalizar partida">⏹</button>
   </div>
@@ -58,16 +59,22 @@
   Toca el mapa para indicar tu ubicación aproximada.
 </div>
 
-<!-- ================= Avisos de disparo entrante ================= -->
-<div id="threat-banner-container" class="threat-banner-container"></div>
-
 <!-- ================= Panel de actividad ================= -->
-<div id="activity-panel" class="activity-panel">
+<div id="activity-panel" class="side-panel activity-panel">
   <div class="activity-header">
     <span class="hud-label">ACTIVIDAD</span>
     <button id="btn-clear-activity" class="activity-clear" title="Limpiar">✕</button>
   </div>
   <div id="activity-list" class="activity-list"></div>
+</div>
+
+<!-- ================= Panel de disparos entrantes ================= -->
+<div id="threat-panel" class="side-panel threat-panel hidden">
+  <div class="activity-header">
+    <span class="hud-label">DISPAROS ENTRANTES</span>
+    <button id="btn-close-threats" class="activity-clear" title="Ocultar panel">✕</button>
+  </div>
+  <div id="threat-list" class="activity-list"></div>
 </div>
 
 <!-- ================= Preview de disparo (antes de confirmar) ================= -->

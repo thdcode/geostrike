@@ -684,6 +684,10 @@ function wireUI() {
     if (mostrar) cargarActividadPersistida();
   });
   document.getElementById('btn-clear-activity')?.addEventListener('click', UI.limpiarActividad);
+  document.getElementById('btn-toggle-threats')?.addEventListener('click', () => {
+    UI.alternarPanelAmenazas(!UI.panelAmenazasVisible());
+  });
+  document.getElementById('btn-close-threats')?.addEventListener('click', () => UI.alternarPanelAmenazas(false));
   document.querySelectorAll('[data-close-modal]').forEach((btn) =>
     btn.addEventListener('click', (e) => UI.alternarModal(e.target.dataset.closeModal, false))
   );

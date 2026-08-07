@@ -153,67 +153,94 @@ export function alternarActividad(mostrar) {
   if (panel) panel.classList.toggle('hidden', !mostrar);
 }
 
+export function alternarPanelAmenazas(mostrar) {
+  const panel = document.getElementById('threat-panel');
+  if (panel) panel.classList.toggle('hidden', !mostrar);
+}
+
+/** ¿El panel de disparos entrantes está visible? */
+export function panelAmenazasVisible() {
+  return !document.getElementById('threat-panel')?.classList.contains('hidden');
+}
+
+/** Abre el panel si hay amenazas pendientes (se llama cuando entra una nueva). */
+function asegurarPanelAmenazasVisible() {
+  const lista = document.getElementById('threat-list');
+  if (!lista) return;
+  if (lista.children.length === 0) return;
+  alternarPanelAmenazas(true);
+}
+
 export function mostrarBannerAmenaza(shotId, distanciaKm, msRestante, onLanzarContramedida, onSeguirDisparo = null, onInterceptar = null) {
-  const cont = document.getElementById('threat-banner-container');
-  if (!cont) return;
+  const lista = document.getElementById('threat-list');
+  if (!lista) return;
   if (document.getElementById(`threat-${shotId}`)) return; // ya mostrado
 
-  const banner = document.createElement('div');
-  banner.id = `threat-${shotId}`;
-  banner.className = 'threat-banner';
-  banner.dataset.shotId = shotId;
-  banner.innerHTML = `
-    <span class="threat-msg">⚠ Disparo entrante a ${Math.round(distanciaKm)} km — impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
-    <button class="btn-counter-inline btn-cnt-intercept">🚀 Interceptar</button>
-    <button class="btn-counter-inline btn-cnt-counter">Lanzar contramedida</button>
+  const item = document.createElement('div');
+  item.id = `threat-${shotId}`;
+  item.className = 'threat-item';
+  item.dataset.shotId = shotId;
+  item.innerHTML = `
+    <div class="threat-head">
+      <span class="threat-title">⚠ Disparo entrante</span>
+      <span class="threat-dist mono">${Math.round(distanciaKm)} km</span>
+    </div>
+    <div class="threat-body">
+      <span class="threat-impact">Impacto en <span class="mono countdown-inline">${formatMMSS(msRestante)}</span></span>
+    </div>
+    <div class="threat-actions">
+      <button class="btn-counter-inline btn-cnt-intercept">🚀 Interceptar</button>
+      <button class="btn-counter-inline btn-cnt-counter">Lanzar contramedida</button>
+    </div>
   `;
-  // Clic en el banner (fuera de los botones) → sigue el disparo en el mapa.
+  // Clic en el item (fuera de los botones) → sigue el disparo en el mapa.
   if (onSeguirDisparo) {
-    banner.classList.add('clicable');
-    banner.addEventListener('click', (e) => {
+    item.classList.add('clicable');
+    item.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       onSeguirDisparo();
     });
   }
-  banner.querySelector('.btn-cnt-counter').addEventListener('click', () => onLanzarContramedida(shotId));
-  const btnIntercept = banner.querySelector('.btn-cnt-intercept');
+  item.querySelector('.btn-cnt-counter').addEventListener('click', () => onLanzarContramedida(shotId));
+  const btnIntercept = item.querySelector('.btn-cnt-intercept');
   if (onInterceptar) {
     btnIntercept.addEventListener('click', () => onInterceptar(shotId));
   } else {
     btnIntercept.disabled = true;
   }
-  cont.appendChild(banner);
+  lista.prepend(item);
+  asegurarPanelAmenazasVisible();
 }
 
-/** Refresca en lote la cuenta atrás de todos los banners visibles, según el snapshot de disparos. */
+/** Refresca en lote la cuenta atrás de todos los disparos entrantes visibles. */
 export function actualizarCuentaAtrasAmenazas(shots) {
   const ahora = Date.now();
-  const banners = document.querySelectorAll('.threat-banner');
-  for (const banner of banners) {
-    const shot = shots[banner.dataset.shotId];
+  const items = document.querySelectorAll('.threat-item');
+  for (const item of items) {
+    const shot = shots[item.dataset.shotId];
     if (!shot || shot.resolved) continue;
-    const el = banner.querySelector('.countdown-inline');
+    const el = item.querySelector('.countdown-inline');
     if (el) el.textContent = formatMMSS(Math.max(0, shot.impactAt - ahora));
   }
 }
 
-/** Marca el banner de un disparo entrante como protegido por contramedida (botón → texto). */
+/** Marca el disparo entrante como protegido por contramedida (botón → texto). */
 export function marcarBannerContramedida(shotId) {
-  const banner = document.getElementById(`threat-${shotId}`);
-  if (!banner) return;
-  const btn = banner.querySelector('.btn-cnt-counter');
+  const item = document.getElementById(`threat-${shotId}`);
+  if (!item) return;
+  const btn = item.querySelector('.btn-cnt-counter');
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Contramedidas lanzadas ✓';
-    banner.classList.add('protected');
+    item.classList.add('protected');
   }
 }
 
-/** Marca el botón de interceptor del banner como ya usado (interceptor lanzado). */
+/** Marca el botón de interceptor del disparo entrante como ya usado. */
 export function marcarBannerInterceptado(shotId) {
-  const banner = document.getElementById(`threat-${shotId}`);
-  if (!banner) return;
-  const btn = banner.querySelector('.btn-cnt-intercept');
+  const item = document.getElementById(`threat-${shotId}`);
+  if (!item) return;
+  const btn = item.querySelector('.btn-cnt-intercept');
   if (btn) {
     btn.disabled = true;
     btn.dataset.activo = '1';
@@ -222,9 +249,8 @@ export function marcarBannerInterceptado(shotId) {
 }
 
 /**
- * Habilita/deshabilita los botones "Interceptar" de todos los banners según si
- * ya hay un interceptor en vuelo. Los marcados como lanzados se quedan como
- * están (muestran "Interceptor en vuelo").
+ * Habilita/deshabilita los botones "Interceptar" de todos los disparos entrantes
+ * según si ya hay un interceptor en vuelo.
  */
 export function sincronizarBotonesInterceptores(deshabilitar) {
   for (const btn of document.querySelectorAll('.btn-cnt-intercept')) {
