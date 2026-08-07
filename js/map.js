@@ -420,7 +420,7 @@ export function marcarResultadoDisparo(shotId, hits, lat, lng) {
 export function mostrarPreview(origen, destino, flightMs) {
   const shot = {
     destLat: destino.lat, destLng: destino.lng,
-    firedAt: Date.now(), impactAt: Date.now() + flightMs, resolved: false,
+    firedAt: Date.now(), impactAt: Math.round(Date.now() + flightMs), resolved: false,
   };
   const existente = animaciones.get('preview');
   if (existente) {

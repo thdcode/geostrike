@@ -548,7 +548,7 @@ async function confirmarDisparo() {
 
   const distanciaKm = haversineKm(miUbicacion.lat, miUbicacion.lng, destinoElegido.lat, destinoElegido.lng);
   const flightMs = calcularFlightMs(distanciaKm);
-  const impactAt = Date.now() + flightMs;
+  const impactAt = Math.round(Date.now() + flightMs);
 
   let result;
   try {
