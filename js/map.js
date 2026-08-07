@@ -655,7 +655,6 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
     puntos: [], ultimoPuntoAt: 0, ultimaPos: null, color,
     estado: shot.resolved ? 'impactado' : 'vuelo',
     amenaza: amenaza && !shot.resolved,
-    recortarRuta: esEnemigo && !origenAjeno,
     contramedida: false,
     interceptor: esInterceptor,
     interceptado,
@@ -664,6 +663,9 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
     estatico,
     cuentaCupo,
     esPropio,
+    // La trayectoria nunca se pinta completa: solo un tramo corto punteado por
+    // delante del misil (+ la estela detrás). Vale para propios, enemigos y bots.
+    recortarRuta: true,
   };
 
   if (interceptado) {

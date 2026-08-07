@@ -20,6 +20,7 @@ const state = {
   sessions: {},
   activity: {},
 };
+const loaded = {};   // nodo -> ya ha llegado el primer snapshot (para emitirlo en el suscriptor)
 const lastSig = {};
 let currentPlayerId = null;
 let pollTimer = null;
@@ -28,6 +29,11 @@ let pollTimer = null;
 const subs = {};
 function sub(key, cb) {
   (subs[key] ||= new Set()).add(cb);
+  // El polling ya puede haber aplicado este nodo antes de que este suscriptor se
+  // registre (refrescarSnapshot arranca en registrarJugador). Como aplicar() solo
+  // avisa cuando cambia la firma (y un nodo estático, p. ej. bots, puede no volver
+  // a cambiar), se emite el estado actual al suscribirse para no perderlo.
+  if (loaded[key]) queueMicrotask(() => cb(state[key]));
   return () => subs[key]?.delete(cb);
 }
 function notify(key, value) {
@@ -65,6 +71,7 @@ function aplicar(nodo, valor) {
   if (sig === lastSig[nodo]) return;
   lastSig[nodo] = sig;
   state[nodo] = actual;
+  loaded[nodo] = true;
   notify(nodo, actual);
 }
 
