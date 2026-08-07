@@ -150,6 +150,9 @@ async function main() {
 
   // 5) Interacción con el mapa (apuntar y disparar)
   map.on('click', onClickMapa);
+  // Coordenadas vivas del cursor mientras se apunta (solo tienen efecto en modo apuntar).
+  map.on('mousemove', onMapaMousemove);
+  map.on('mouseout', onMapaMouseout);
 
   // 6) Bucle periódico: cuenta atrás de amenazas, resolución de disparos vencidos
   setInterval(tick, TICK_INTERVAL_MS);
@@ -534,6 +537,34 @@ function onClickMapa(e) {
   Mapa.mostrarPreview(miUbicacion, destinoElegido, flightMs);
 }
 
+// ---------- Feedback en vivo de apuntado ----------
+
+function elCoordHud() {
+  return document.getElementById('coord-hud');
+}
+
+function onMapaMousemove(e) {
+  if (!modoApuntando) return;
+  const el = elCoordHud();
+  if (el) {
+    el.classList.remove('hidden');
+    const c = el.querySelector('.coord-value');
+    if (c) c.textContent = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+  }
+}
+
+function onMapaMouseout() {
+  if (!modoApuntando) return;
+  const el = elCoordHud();
+  if (el) el.classList.add('hidden');
+}
+
+function setAimCursor(activo) {
+  const tmp = Mapa.obtenerMapa();
+  if (tmp) tmp.getContainer().classList.toggle('aiming', activo);
+  elCoordHud()?.classList.toggle('hidden', !activo);
+}
+
 async function confirmarDisparo() {
   if (!destinoElegido) return;
   if (jugadorEliminado || estadoJugador.status !== 'alive') {
@@ -592,6 +623,7 @@ function cancelarApuntado() {
   modoApuntando = false;
   destinoElegido = null;
   document.getElementById('btn-fire')?.classList.remove('active');
+  setAimCursor(false);
   Mapa.limpiarPreview();
   UI.ocultarPreviewDisparo();
 }
@@ -623,6 +655,7 @@ function wireUI() {
   document.getElementById('btn-fire')?.addEventListener('click', () => {
     modoApuntando = !modoApuntando;
     document.getElementById('btn-fire').classList.toggle('active', modoApuntando);
+    setAimCursor(modoApuntando);
     if (!modoApuntando) {
       Mapa.limpiarPreview();
       UI.ocultarPreviewDisparo();
