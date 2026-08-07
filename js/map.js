@@ -449,11 +449,12 @@ export function mostrarPreview(origen, destino, flightMs) {
     a.origenLng = origen.lng;
   }
 
-  // Círculo azul centrado en las coordenadas seleccionadas.
+  // Punto azul en las coordenadas EXACTAS seleccionadas (un radio geo daría el
+  // área de máxima influencia, no la posición señalada).
   if (!a.circulo) {
-    a.circulo = L.circle(destinoArr, {
-      radius: SPLASH_RADIUS_KM * 1000, color, weight: 1.5, dashArray: '4 4',
-      fillOpacity: 0.08, interactive: false,
+    a.circulo = L.circleMarker(destinoArr, {
+      radius: 6, color: '#fff', weight: 1.5,
+      fillColor: color, fillOpacity: 1, interactive: false,
     }).addTo(map);
   } else {
     a.circulo.setLatLng(destinoArr);
