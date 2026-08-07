@@ -15,6 +15,10 @@ export const VAPID_PUBLIC_KEY = "BB6QOy0ZwvDJmQeBN1-fQhFCFsefvS1LZ5SlPHlTzs2a2eT
 
 // --- Constantes de juego (deben coincidir con src/balance.js del Worker) ---
 export const SPLASH_RADIUS_KM = 50;
+// Radio del indicador que se dibuja en el mapa para cada disparo: solo visual,
+// NO afecta al daño por salpicadura real (SPLASH_RADIUS_KM se mantiene para la
+// lógica). Un círculo pequeño evita que se acumulen anillos de 50 km.
+export const SHOT_CIRCLE_KM = 4;
 export const WARNING_RADIUS_KM = 200;
 export const SHOT_COOLDOWN_MS = 30_000; // 30s entre disparos propios (legacy, sin slots)
 export const COUNTERMEASURE_COOLDOWN_MS = 90_000; // 1,5 min

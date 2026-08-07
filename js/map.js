@@ -5,7 +5,7 @@
 //   - Disparos ajenos: se anima la LLEGADA convergiendo al destino desde el
 //     perímetro, sin inventar ni revelar el origen del jugador que dispara.
 
-import { SPLASH_RADIUS_KM, DEBUG_MODE } from './config.js';
+import { SHOT_CIRCLE_KM, DEBUG_MODE } from './config.js';
 import { formatMMSS, haversineKm } from './physics.js';
 
 let map;
@@ -358,7 +358,7 @@ function resaltarMisil(a) {
 
 function resaltarPunto(lat, lng, color) {
   const ring = L.circle([lat, lng], {
-    radius: SPLASH_RADIUS_KM * 1000, color, weight: 2.5, dashArray: null,
+    radius: SHOT_CIRCLE_KM * 1000, color, weight: 2.5, dashArray: null,
     fillOpacity: 0.1, interactive: false,
   }).addTo(map);
   const center = L.marker([lat, lng], {
@@ -594,7 +594,7 @@ function crearAnimacion(shotId, shot, origen, amenaza, origenAjeno) {
   }).addTo(map);
 
   const circulo = L.circle(destino, {
-    radius: SPLASH_RADIUS_KM * 1000, color, weight: 1.5, dashArray: '4 4',
+    radius: SHOT_CIRCLE_KM * 1000, color, weight: 1.5, dashArray: '4 4',
     fillOpacity: 0.06, interactive: false,
   }).addTo(map);
 
