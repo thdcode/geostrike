@@ -422,24 +422,76 @@ export function mostrarPreview(origen, destino, flightMs) {
     destLat: destino.lat, destLng: destino.lng,
     firedAt: Date.now(), impactAt: Math.round(Date.now() + flightMs), resolved: false,
   };
-  const existente = animaciones.get('preview');
-  if (existente) {
-    existente.shot = shot;
-    existente.destino = [shot.destLat, shot.destLng];
-    existente.origenLat = origen.lat;
-    existente.origenLng = origen.lng;
-    existente.puntos = [];
-    existente.ultimoPuntoAt = 0;
-    existente.ultimaPos = null;
-    existente.estado = 'vuelo';
-    setEstela(existente.estela, []);
-    existente.ruta.setLatLngs([[origen.lat, origen.lng], [shot.destLat, shot.destLng]]);
-    existente.marcador.setLatLng([origen.lat, origen.lng]);
-    if (existente.ping) existente.ping.setLatLng(existente.destino);
+  const destinoArr = [shot.destLat, shot.destLng];
+  const color = COLOR_PREVIEW;
+
+  let a = animaciones.get('preview');
+  // El apuntado solo MARCA la posición objetivo: sin misil volando, sin estela.
+  // El disparo animado real lo inicia "Confirmar disparo".
+  if (!a) {
+    a = {
+      shotId: 'preview', shot,
+      destino: destinoArr,
+      origenLat: origen.lat, origenLng: origen.lng,
+      marcador: null, wrap: null, ping: null,
+      etaMarker: null, etaEl: null, estela: [], puntos: [],
+      ruta: null,
+      estado: 'vuelo', amenaza: false, recortarRuta: false,
+      contramedida: false, interceptor: false, intercepted: false,
+      estatico: true, cuentaCupo: false, esPropio: true, tier: 'static',
+    };
+    animaciones.set('preview', a);
   } else {
-    rastrearDisparo('preview', shot, { lat: origen.lat, lng: origen.lng }, false);
+    a.shot = shot;
+    a.destino = destinoArr;
+    a.origenLat = origen.lat;
+    a.origenLng = origen.lng;
   }
-  arrancarBucle();
+
+  // Marca de la posición objetivo: un círculo punteado + marcador de objetivo.
+  if (!a.circulo) {
+    a.circulo = L.circle(destinoArr, {
+      radius: SPLASH_RADIUS_KM * 1000, color, weight: 1.5, dashArray: '4 4',
+      fillOpacity: 0.06, interactive: false,
+    }).addTo(map);
+  } else {
+    a.circulo.setLatLng(destinoArr);
+  }
+
+  if (!a.impactMarker) {
+    a.impactMarker = L.marker(destinoArr, {
+      icon: L.divIcon({ className: 'preview-target-icon', html: '<div class="preview-target"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+    a.impactMarker.getElement().style.color = color;
+  } else {
+    a.impactMarker.setLatLng(destinoArr);
+  }
+
+  // Línea punteada origen → destino (trayectoria prevista, sin misil).
+  if (!a.ruta) {
+    a.ruta = L.polyline([[origen.lat, origen.lng], destinoArr], {
+      color, weight: 1.5, opacity: 0.6, dashArray: '4 8', interactive: false,
+    }).addTo(map);
+  } else {
+    a.ruta.setLatLngs([[origen.lat, origen.lng], destinoArr]);
+  }
+
+  // Etiqueta ETA junto a la posición marcada.
+  if (!a.etaMarker) {
+    a.etaMarker = L.marker(destinoArr, {
+      icon: L.divIcon({
+        className: 'eta-label-wrap',
+        html: '<span class="eta-label mono">--:--</span>',
+        iconSize: [0, 0],
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(map);
+    a.etaEl = a.etaMarker.getElement().querySelector('.eta-label');
+  } else {
+    a.etaMarker.setLatLng(destinoArr);
+  }
+  if (a.etaEl) a.etaEl.textContent = formatMMSS(Math.max(0, a.shot.impactAt - Date.now()));
 }
 
 export function limpiarPreview() {

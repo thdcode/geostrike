@@ -43,6 +43,19 @@ html, body {
   text-shadow: 0 0 4px rgba(0,0,0,0.6);
 }
 
+/* Marca de la posición apuntada (antes de confirmar el disparo) */
+.leaflet-div-icon.preview-target-icon { background: transparent; border: none; }
+.preview-target {
+  width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border: 2px solid #8AD8FF; border-radius: 50%;
+  box-shadow: 0 0 6px rgba(138, 216, 255, 0.7), inset 0 0 4px rgba(138, 216, 255, 0.5);
+}
+.preview-target::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  background: #8AD8FF; border-radius: 50%;
+}
+
 /* ================= Animación de disparos (flyscanner) ================= */
 .leaflet-div-icon.missile-icon,
 .leaflet-div-icon.eta-label-wrap,
